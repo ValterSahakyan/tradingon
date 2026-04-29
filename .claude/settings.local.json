@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(awk -F\"from '\" '{print $2}')",
+      "Bash(python3 \"C:\\\\Users\\\\User\\\\.claude\\\\skills\\\\ui-ux-pro-max\\\\scripts\\\\search.py\" \"crypto trading terminal dashboard dark fintech professional\" --design-system -p \"TradingOn Bot Dashboard\")",
+      "Bash(py \"C:\\\\Users\\\\User\\\\.claude\\\\skills\\\\ui-ux-pro-max\\\\scripts\\\\search.py\" \"crypto trading terminal dashboard dark fintech professional\" --design-system -p \"TradingOn Bot Dashboard\")",
+      "Bash(py \"C:\\\\Users\\\\User\\\\.claude\\\\skills\\\\ui-ux-pro-max\\\\scripts\\\\search.py\" \"real-time data dashboard charts financial\" --domain chart -n 6)",
+      "Bash(docker compose *)",
+      "Bash(docker volume *)",
+      "Bash(docker exec *)",
+      "Bash(netstat -ano)",
+      "Bash(findstr \":5432\\\\|:5433\")",
+      "PowerShell(Get-NetTCPConnection -LocalPort 5432,5433 -ErrorAction SilentlyContinue | Select-Object LocalPort, State, OwningProcess | ForEach-Object { $proc = Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue; [PSCustomObject]@{Port=$_.LocalPort; State=$_.State; PID=$_.OwningProcess; Name=$proc.Name} })",
+      "Bash(npm install *)",
+      "Bash(npm run *)",
+      "Bash(python \"C:\\\\Users\\\\User\\\\.claude\\\\skills\\\\ui-ux-pro-max\\\\scripts\\\\search.py\" \"trading bot dashboard fintech dark professional\" --design-system -p \"TradingOn Bot\" -f markdown)"
+    ]
+  }
+}

@@ -1,0 +1,16 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: tradingon-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: tradingon
+      POSTGRES_USER: tradingon
+      POSTGRES_PASSWORD: tradingon
+    ports:
+      - "5434:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:
