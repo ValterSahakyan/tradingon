@@ -1,12 +1,21 @@
 export default () => ({
+  server: {
+    port: parseInt(process.env.PORT || '3000'),
+  },
+  execution: {
+    enabled: process.env.LIVE_TRADING_ENABLED === 'true',
+    allowMainnet: process.env.ALLOW_MAINNET_TRADING === 'true',
+  },
   hyperliquid: {
     privateKey: process.env.HYPERLIQUID_PRIVATE_KEY,
-    testnet: process.env.HYPERLIQUID_TESTNET === 'true', // default false = mainnet
-    apiUrl: process.env.HYPERLIQUID_API_URL ||
+    testnet: process.env.HYPERLIQUID_TESTNET === 'true',
+    apiUrl:
+      process.env.HYPERLIQUID_API_URL ||
       (process.env.HYPERLIQUID_TESTNET === 'true'
         ? 'https://api.hyperliquid-testnet.xyz'
         : 'https://api.hyperliquid.xyz'),
-    wsUrl: process.env.HYPERLIQUID_WS_URL ||
+    wsUrl:
+      process.env.HYPERLIQUID_WS_URL ||
       (process.env.HYPERLIQUID_TESTNET === 'true'
         ? 'wss://api.hyperliquid-testnet.xyz/ws'
         : 'wss://api.hyperliquid.xyz/ws'),
@@ -14,7 +23,7 @@ export default () => ({
   capital: {
     initial: parseFloat(process.env.INITIAL_CAPITAL || '200'),
     maxConcurrentPositions: parseInt(process.env.MAX_CONCURRENT_POSITIONS || '5'),
-    leverage: 3, // HARD CODED — NEVER CHANGE
+    leverage: parseFloat(process.env.DEFAULT_LEVERAGE || '3'),
     marginScore2: parseFloat(process.env.MARGIN_SCORE_2 || '4'),
     marginScore3: parseFloat(process.env.MARGIN_SCORE_3 || '5'),
     marginScore4: parseFloat(process.env.MARGIN_SCORE_4 || '6'),
@@ -25,7 +34,7 @@ export default () => ({
     tp2Percent: parseFloat(process.env.TP2_PERCENT || '20'),
     trailingStopPercent: parseFloat(process.env.TRAILING_STOP_PERCENT || '5'),
     maxHoldHours: parseFloat(process.env.MAX_HOLD_HOURS || '4'),
-    volatilityStopPercent: 15, // single-candle rug pull protection
+    volatilityStopPercent: 15,
   },
   risk: {
     dailyLossLimit: parseFloat(process.env.DAILY_LOSS_LIMIT || '20'),
@@ -44,6 +53,7 @@ export default () => ({
   scan: {
     intervalSeconds: parseInt(process.env.SCAN_INTERVAL_SECONDS || '300'),
     candleLookback: 48,
+    maxTrackedTokens: parseInt(process.env.MAX_TRACKED_TOKENS || '150'),
   },
   patterns: {
     volumeSpikeMultiplier: parseFloat(process.env.VOLUME_SPIKE_MULTIPLIER || '3'),
@@ -61,6 +71,8 @@ export default () => ({
     bullMarketThresholdPercent: parseFloat(process.env.BULL_MARKET_THRESHOLD_PERCENT || '3'),
   },
   database: {
-    url: process.env.DATABASE_URL || 'postgresql://postgres:password@localhost:5432/tradingon',
+    url: process.env.DATABASE_URL,
+    ssl: process.env.DATABASE_SSL === 'true',
+    synchronize: process.env.TYPEORM_SYNCHRONIZE === 'true',
   },
 });

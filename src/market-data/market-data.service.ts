@@ -1,13 +1,15 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import axios, { AxiosInstance } from 'axios';
+import { AppConfigService } from '../config/app-config.service';
 import { Candle, MarketCondition } from '../common/types';
 
 interface TokenMeta {
   name: string;
   marketCap: number;
-  launchTime: number; // unix ms
+  launchTime: number;
   ageDays: number;
+  dayVolume: number;
+  openInterest: number;
 }
 
 interface CandleCache {
@@ -18,37 +20,22 @@ interface CandleCache {
 @Injectable()
 export class MarketDataService implements OnModuleInit {
   private readonly logger = new Logger(MarketDataService.name);
-  private readonly http: AxiosInstance;
-  private readonly apiUrl: string;
-
-  // token → candle cache (last 48 5m candles)
+  private http: AxiosInstance | null = null;
+  private configReady = false;
   private candleCache = new Map<string, CandleCache>();
-  // token → funding rate cache
   private fundingRates = new Map<string, number>();
-  // token → meta
   private tokenMeta = new Map<string, TokenMeta>();
-  // tracked token universe (populated from Hyperliquid perp listings)
   private trackedTokens: string[] = [];
-
-  // market condition inputs
+  private lastUniverseRefreshAt = 0;
   private solPriceHistory: { price: number; time: number }[] = [];
   private btcPriceHistory: { price: number; time: number }[] = [];
-
   private currentMarketCondition: MarketCondition = 'sideways';
 
-  constructor(private readonly config: ConfigService) {
-    this.apiUrl = this.config.get<string>('hyperliquid.apiUrl');
-    this.http = axios.create({ baseURL: this.apiUrl, timeout: 10_000 });
-  }
+  constructor(private readonly config: AppConfigService) {}
 
-  async onModuleInit() {
-    // Small delay so HyperliquidClient initialises first and we don't burst the API
-    await new Promise(r => setTimeout(r, 2000));
-    await this.refreshTokenUniverse();
-    this.logger.log(`Tracking ${this.trackedTokens.length} tokens`);
+  onModuleInit() {
+    void this.initializeMarketData();
   }
-
-  // ─── Public API ────────────────────────────────────────────────
 
   getTrackedTokens(): string[] {
     return this.trackedTokens;
@@ -79,6 +66,11 @@ export class MarketDataService implements OnModuleInit {
   }
 
   async refreshAll(): Promise<void> {
+    const refreshDue = Date.now() - this.lastUniverseRefreshAt > 15 * 60_000;
+    if (refreshDue) {
+      await this.refreshTokenUniverse();
+    }
+
     await Promise.all([
       this.refreshMarketCondition(),
       this.refreshFundingRates(),
@@ -87,58 +79,82 @@ export class MarketDataService implements OnModuleInit {
     this.evaluateMarketCondition();
   }
 
-  // ─── Token Universe ────────────────────────────────────────────
-
   async refreshTokenUniverse(): Promise<void> {
-    try {
-      const res = await this.http.post('/info', { type: 'meta' });
-      const universe: any[] = res.data?.universe ?? [];
+    const http = await this.getHttp();
+    if (!http) {
+      return;
+    }
 
+    try {
+      const res = await http.post('/info', { type: 'metaAndAssetCtxs' });
+      const payload = Array.isArray(res.data) ? res.data : [res.data, []];
+      const meta = payload[0];
+      const ctxs: any[] = Array.isArray(payload[1]) ? payload[1] : [];
+      const universe: any[] = meta?.universe ?? [];
       const minMarketCap = this.config.get<number>('filters.minMarketCap');
       const minAgeDays = this.config.get<number>('filters.minTokenAgeDays');
+      const maxTrackedTokens = this.config.get<number>('scan.maxTrackedTokens');
+
+      const rankedTokens = universe.map((asset, index) => {
+        const ctx = ctxs[index] ?? {};
+        const dayVolume = this.readPositiveNumber(ctx.dayNtlVlm ?? ctx.dayBaseVlm ?? 0);
+        const openInterest = this.readPositiveNumber(ctx.openInterest ?? 0);
+        return {
+          name: String(asset.name),
+          dayVolume,
+          openInterest,
+        };
+      });
+
+      rankedTokens.sort((left, right) => {
+        if (right.dayVolume !== left.dayVolume) {
+          return right.dayVolume - left.dayVolume;
+        }
+        return right.openInterest - left.openInterest;
+      });
 
       const tokens: string[] = [];
-      for (const asset of universe) {
-        const name: string = asset.name;
-        // Hyperliquid meta doesn't include market cap or launch time directly —
-        // we seed meta with defaults and rely on the candle data quality filter.
-        // Production: enrich via GMGN or CoinGecko API.
-        if (!this.tokenMeta.has(name)) {
-          this.tokenMeta.set(name, {
-            name,
-            marketCap: minMarketCap + 1, // default pass until enriched
-            launchTime: Date.now() - minAgeDays * 2 * 86400_000,
-            ageDays: minAgeDays * 2,
-          });
-        }
+      for (const asset of rankedTokens) {
+        const name = asset.name;
+        this.tokenMeta.set(name, {
+          name,
+          marketCap: minMarketCap + 1,
+          launchTime: Date.now() - minAgeDays * 2 * 86400_000,
+          ageDays: minAgeDays * 2,
+          dayVolume: asset.dayVolume,
+          openInterest: asset.openInterest,
+        });
         tokens.push(name);
       }
 
-      this.trackedTokens = tokens.slice(0, 100); // cap at 100
+      this.trackedTokens = tokens.slice(0, Math.max(1, maxTrackedTokens));
+      this.lastUniverseRefreshAt = Date.now();
     } catch (err) {
-      this.logger.error('Failed to refresh token universe', err.message);
+      this.logger.error(`Failed to refresh token universe: ${err.message}`);
     }
   }
 
-  // ─── OHLCV Candles ─────────────────────────────────────────────
-
   async refreshAllCandles(): Promise<void> {
-    const batchSize = 5; // stay under HL rate limit
+    const batchSize = 5;
     for (let i = 0; i < this.trackedTokens.length; i += batchSize) {
       const batch = this.trackedTokens.slice(i, i + batchSize);
-      await Promise.allSettled(batch.map((t) => this.refreshCandles(t)));
+      await Promise.allSettled(batch.map((token) => this.refreshCandles(token)));
       if (i + batchSize < this.trackedTokens.length) {
-        await new Promise(r => setTimeout(r, 500)); // 500ms between batches
+        await new Promise((resolve) => setTimeout(resolve, 500));
       }
     }
   }
 
   async refreshCandles(token: string): Promise<void> {
+    const http = await this.getHttp();
+    if (!http) {
+      return;
+    }
+
     try {
       const now = Date.now();
-      const startTime = now - 48 * 5 * 60 * 1000; // 48 × 5min candles
-
-      const res = await this.http.post('/info', {
+      const startTime = now - 49 * 5 * 60 * 1000;
+      const res = await http.post('/info', {
         type: 'candleSnapshot',
         req: {
           coin: token,
@@ -159,35 +175,36 @@ export class MarketDataService implements OnModuleInit {
       }));
 
       this.candleCache.set(token, { candles, lastUpdated: now });
-    } catch (err) {
-      // silently skip — stale cache will be used
+    } catch {
+      return;
     }
   }
 
-  // ─── Funding Rates ─────────────────────────────────────────────
-
   async refreshFundingRates(): Promise<void> {
+    const http = await this.getHttp();
+    if (!http) {
+      return;
+    }
+
     try {
-      const res = await this.http.post('/info', { type: 'metaAndAssetCtxs' });
+      const res = await http.post('/info', { type: 'metaAndAssetCtxs' });
       const [meta, ctxs]: [any, any[]] = res.data ?? [null, []];
-      if (!meta || !ctxs) return;
+      if (!meta || !ctxs) {
+        return;
+      }
 
       meta.universe.forEach((asset: any, idx: number) => {
         const ctx = ctxs[idx];
         if (ctx?.funding != null) {
-          // HL funding field is the 8-hour rate as a fraction (e.g. 0.0001 = 0.01% per 8h)
-          // Convert to hourly percentage: (rate * 100) / 8
           const rate8h = parseFloat(ctx.funding);
           const perHourPct = (Math.abs(rate8h) * 100) / 8;
           this.fundingRates.set(asset.name, perHourPct);
         }
       });
     } catch (err) {
-      this.logger.warn('Failed to refresh funding rates', err.message);
+      this.logger.warn(`Failed to refresh funding rates: ${err.message}`);
     }
   }
-
-  // ─── Market Condition ──────────────────────────────────────────
 
   async refreshMarketCondition(): Promise<void> {
     await Promise.allSettled([
@@ -196,23 +213,66 @@ export class MarketDataService implements OnModuleInit {
     ]);
   }
 
+  getCurrentPrice(token: string): number {
+    const candles = this.getCandles(token);
+    if (candles.length === 0) {
+      return 0;
+    }
+    return candles[candles.length - 1].close;
+  }
+
+  getTokenAgeDays(token: string): number {
+    return this.tokenMeta.get(token)?.ageDays ?? 999;
+  }
+
+  getMarketCap(token: string): number {
+    return this.tokenMeta.get(token)?.marketCap ?? 0;
+  }
+
+  setTokenMeta(token: string, meta: Partial<TokenMeta>): void {
+    const existing = this.tokenMeta.get(token) ?? {
+      name: token,
+      marketCap: 0,
+      launchTime: 0,
+      ageDays: 0,
+      dayVolume: 0,
+      openInterest: 0,
+    };
+    this.tokenMeta.set(token, { ...existing, ...meta });
+  }
+
+  private async initializeMarketData(): Promise<void> {
+    await this.ensureConfigured();
+    if (!this.configReady) {
+      return;
+    }
+
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      await this.refreshTokenUniverse();
+      this.logger.log(`Tracking ${this.trackedTokens.length} tokens`);
+    } catch (err) {
+      this.logger.error(`Initial market data load failed: ${err.message}`);
+    }
+  }
+
   private async updatePriceHistory(
     token: string,
     history: { price: number; time: number }[],
   ): Promise<void> {
     try {
-      // Use candle cache if available, else fetch
       const candles = this.getCandles(token);
       if (candles.length > 0) {
         const latest = candles[candles.length - 1];
         history.push({ price: latest.close, time: latest.time });
-        // keep last 50 points
-        if (history.length > 50) history.splice(0, history.length - 50);
+        if (history.length > 50) {
+          history.splice(0, history.length - 50);
+        }
       } else {
         await this.refreshCandles(token);
       }
     } catch {
-      // ignore
+      return;
     }
   }
 
@@ -220,7 +280,6 @@ export class MarketDataService implements OnModuleInit {
     const btcChange4h = this.getBtcPriceChangePct(4 * 3600_000);
     const solChange1h = this.getSolPriceChangePct(3600_000);
     const marketUp1h = this.priceChangePctFromIndex(this.solPriceHistory, 3600_000);
-
     const btcBear = this.config.get<number>('market.btcBearThresholdPercent');
     const solBear = this.config.get<number>('market.solBearThresholdPercent');
     const bull = this.config.get<number>('market.bullMarketThresholdPercent');
@@ -236,8 +295,6 @@ export class MarketDataService implements OnModuleInit {
     }
   }
 
-  // ─── Helpers ───────────────────────────────────────────────────
-
   private priceChangePct(
     history: { price: number; time: number }[],
     lookbackMs: number,
@@ -249,33 +306,43 @@ export class MarketDataService implements OnModuleInit {
     history: { price: number; time: number }[],
     lookbackMs: number,
   ): number {
-    if (history.length < 2) return 0;
-    const now = Date.now();
-    const cutoff = now - lookbackMs;
-    const baseline = history.find((p) => p.time >= cutoff);
-    if (!baseline) return 0;
+    if (history.length < 2) {
+      return 0;
+    }
+
+    const cutoff = Date.now() - lookbackMs;
+    const baseline = history.find((point) => point.time >= cutoff);
+    if (!baseline) {
+      return 0;
+    }
+
     const latest = history[history.length - 1];
     return ((latest.price - baseline.price) / baseline.price) * 100;
   }
 
-  getCurrentPrice(token: string): number {
-    const candles = this.getCandles(token);
-    if (candles.length === 0) return 0;
-    return candles[candles.length - 1].close;
+  private async ensureConfigured(): Promise<void> {
+    if (this.configReady) {
+      return;
+    }
+
+    await this.config.waitUntilReady();
+    const apiUrl = this.config.get<string>('hyperliquid.apiUrl');
+    if (!apiUrl) {
+      this.logger.error('Hyperliquid API URL not configured');
+      return;
+    }
+
+    this.http = axios.create({ baseURL: apiUrl, timeout: 10_000 });
+    this.configReady = true;
   }
 
-  getTokenAgeDays(token: string): number {
-    return this.tokenMeta.get(token)?.ageDays ?? 999;
+  private async getHttp(): Promise<AxiosInstance | null> {
+    await this.ensureConfigured();
+    return this.http;
   }
 
-  getMarketCap(token: string): number {
-    return this.tokenMeta.get(token)?.marketCap ?? 0;
-  }
-
-  // Enrich a token's meta from an external source (GMGN or similar).
-  // Called lazily — production should batch-enrich on startup.
-  setTokenMeta(token: string, meta: Partial<TokenMeta>): void {
-    const existing = this.tokenMeta.get(token) ?? { name: token, marketCap: 0, launchTime: 0, ageDays: 0 };
-    this.tokenMeta.set(token, { ...existing, ...meta });
+  private readPositiveNumber(value: unknown): number {
+    const parsed = Number(value ?? 0);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
   }
 }

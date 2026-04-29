@@ -9,6 +9,9 @@ import PnlChart from './components/PnlChart'
 import TradesTable from './components/TradesTable'
 import ConfigPanel from './components/ConfigPanel'
 
+const INITIAL_LOAD_RETRIES = 10
+const INITIAL_LOAD_DELAY_MS = 1500
+
 export default function App() {
   const [dashboard, setDashboard] = useState<DashboardData | null>(null)
   const [runtime, setRuntime] = useState<RuntimeInfo | null>(null)
@@ -31,15 +34,31 @@ export default function App() {
     setConfig(cfg.sections)
   }, [])
 
+  const waitForBackend = useCallback(async () => {
+    let lastError: Error | null = null
+
+    for (let attempt = 0; attempt < INITIAL_LOAD_RETRIES; attempt += 1) {
+      try {
+        await Promise.all([loadDashboard(), loadConfig()])
+        return
+      } catch (err) {
+        lastError = err as Error
+        await new Promise(resolve => setTimeout(resolve, INITIAL_LOAD_DELAY_MS))
+      }
+    }
+
+    throw lastError ?? new Error('Backend unavailable')
+  }, [loadConfig, loadDashboard])
+
   useEffect(() => {
-    Promise.all([loadDashboard(), loadConfig()]).catch(err => {
+    waitForBackend().catch(err => {
       showFlash(`Initial load failed: ${(err as Error).message}`, 'bad')
     })
     const timer = setInterval(() => {
       loadDashboard().catch(err => console.warn('Refresh failed', err))
     }, 5000)
     return () => clearInterval(timer)
-  }, [loadDashboard, loadConfig, showFlash])
+  }, [loadDashboard, showFlash, waitForBackend])
 
   const handleBotAction = useCallback(async (url: string, message: string, body: unknown) => {
     if (busy) return
@@ -58,7 +77,7 @@ export default function App() {
   const handleSaveConfig = useCallback(async (values: Record<string, unknown>) => {
     try {
       await saveConfig(values)
-      showFlash('Config saved to .env. Restart the bot process to apply most changes.')
+      showFlash('Config saved to database. Restart the bot process to apply most changes.')
       await loadConfig()
     } catch (err) {
       showFlash(`Failed to save config: ${(err as Error).message}`, 'bad')
@@ -90,7 +109,10 @@ export default function App() {
           <TradesTable trades={dashboard?.trades ?? []} />
         </div>
         <div className="stack">
-          <SignalsPanel signals={dashboard?.signals ?? []} />
+          <SignalsPanel
+            signals={dashboard?.signals ?? []}
+            watchlist={dashboard?.watchlist ?? []}
+          />
           <ConfigPanel
             sections={config}
             onSave={handleSaveConfig}

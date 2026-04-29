@@ -7,10 +7,13 @@ import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'path';
 
 import configuration from './config/configuration';
+import { AppConfigModule } from './config/app-config.module';
+import { AppSetting } from './config/entities/app-setting.entity';
 import { TradeLog } from './logging/entities/trade-log.entity';
 import { DailyStats } from './logging/entities/daily-stats.entity';
 import { BotModule } from './bot/bot.module';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { HealthModule } from './health/health.module';
 
 @Module({
   imports: [
@@ -20,6 +23,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
       load: [configuration],
       envFilePath: '.env',
     }),
+    AppConfigModule,
 
     // Database
     TypeOrmModule.forRootAsync({
@@ -27,10 +31,10 @@ import { DashboardModule } from './dashboard/dashboard.module';
       useFactory: (config: ConfigService) => ({
         type: 'postgres',
         url: config.get<string>('database.url'),
-        entities: [TradeLog, DailyStats],
-        synchronize: true, // auto-create tables on first run; disable in prod and use migrations
+        entities: [AppSetting, TradeLog, DailyStats],
+        synchronize: config.get<boolean>('database.synchronize') === true,
         logging: false,
-        ssl: process.env.DATABASE_SSL === 'true' ? { rejectUnauthorized: false } : false,
+        ssl: config.get<boolean>('database.ssl') === true ? { rejectUnauthorized: false } : false,
       }),
     }),
 
@@ -49,6 +53,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
     // Feature modules
     BotModule,
     DashboardModule,
+    HealthModule,
   ],
 })
 export class AppModule {}

@@ -1,62 +1,94 @@
 import { Injectable } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { AppConfigService } from '../../config/app-config.service';
 import { Candle, PatternResult, TradeDirection } from '../../common/types';
 
 @Injectable()
 export class FibonacciPattern {
-  constructor(private readonly config: ConfigService) {}
+  constructor(private readonly config: AppConfigService) {}
 
   detect(candles: Candle[]): PatternResult {
-    if (candles.length < 10) return { fired: false };
+    if (candles.length < 20) {
+      return { fired: false };
+    }
 
     const lookback = this.config.get<number>('scan.candleLookback');
     const fibLevels: number[] = this.config.get('patterns.fibLevels');
     const tolerance = this.config.get<number>('patterns.fibTolerancePercent');
-
+    const minImpulseMove = this.config.get<number>('patterns.flagSharpMovePercent');
     const window = candles.slice(-lookback);
-    const current = candles[candles.length - 1];
+    const current = window[window.length - 1];
 
-    const swingHigh = Math.max(...window.map((c) => c.high));
-    const swingLow = Math.min(...window.map((c) => c.low));
+    let swingLowIdx = 0;
+    let swingHighIdx = 0;
+    for (let i = 1; i < window.length; i += 1) {
+      if (window[i].low < window[swingLowIdx].low) {
+        swingLowIdx = i;
+      }
+      if (window[i].high > window[swingHighIdx].high) {
+        swingHighIdx = i;
+      }
+    }
+
+    if (swingLowIdx === swingHighIdx) {
+      return { fired: false };
+    }
+
+    const bullishSwing = swingLowIdx < swingHighIdx;
+    const swingLow = window[swingLowIdx].low;
+    const swingHigh = window[swingHighIdx].high;
     const range = swingHigh - swingLow;
+    if (range <= 0) {
+      return { fired: false };
+    }
 
-    if (range === 0) return { fired: false };
+    const impulseMovePct = (range / swingLow) * 100;
+    if (impulseMovePct < minImpulseMove) {
+      return { fired: false };
+    }
 
-    // Pump volume = highest single-candle volume in swing
-    const maxVolume = Math.max(...window.map((c) => c.volume));
-    const currentVolume = current.volume;
-    const volumeLower = currentVolume < maxVolume;
+    const impulseCandles = bullishSwing
+      ? window.slice(swingLowIdx, swingHighIdx + 1)
+      : window.slice(swingHighIdx, swingLowIdx + 1);
+    if (impulseCandles.length < 2) {
+      return { fired: false };
+    }
 
-    const fib50 = swingHigh - range * 0.5;
-    const fib618 = swingHigh - range * 0.618;
+    const retracementZone = bullishSwing
+      ? window.slice(swingHighIdx + 1)
+      : window.slice(swingLowIdx + 1);
+    if (retracementZone.length === 0) {
+      return { fired: false };
+    }
 
-    const price = current.close;
+    const impulseAvgVolume =
+      impulseCandles.reduce((sum, candle) => sum + candle.volume, 0) / impulseCandles.length;
+    const retraceAvgVolume =
+      retracementZone.reduce((sum, candle) => sum + candle.volume, 0) / retracementZone.length;
+    const volumeLower = retraceAvgVolume < impulseAvgVolume;
 
-    const nearFib = fibLevels.some((level) => {
-      const fibPrice = swingHigh - range * level;
-      const diffPct = Math.abs((price - fibPrice) / fibPrice) * 100;
-      return diffPct <= tolerance;
-    });
+    const targets = fibLevels.map((level) =>
+      bullishSwing ? swingHigh - range * level : swingLow + range * level,
+    );
+    const nearestLevel = targets.reduce((nearest, candidate) =>
+      Math.abs(candidate - current.close) < Math.abs(nearest - current.close) ? candidate : nearest,
+    );
+    const diffPct = Math.abs((current.close - nearestLevel) / nearestLevel) * 100;
+    const nearFib = diffPct <= tolerance;
 
     const fired = nearFib && volumeLower;
-
-    // If price is near support (lower fib) = long; near resistance (higher fib) = short
-    const distToFib50 = Math.abs(price - fib50);
-    const distToFib618 = Math.abs(price - fib618);
-    const nearestFib = distToFib50 < distToFib618 ? fib50 : fib618;
-    const direction: TradeDirection = price < nearestFib * 1.01 ? 'long' : 'short';
+    const direction: TradeDirection = bullishSwing ? 'long' : 'short';
 
     return {
       fired,
       direction: fired ? direction : undefined,
       details: {
-        swingHigh,
-        swingLow,
-        fib50: +fib50.toFixed(6),
-        fib618: +fib618.toFixed(6),
-        currentPrice: price,
+        swingLow: +swingLow.toFixed(6),
+        swingHigh: +swingHigh.toFixed(6),
+        impulseMovePct: +impulseMovePct.toFixed(2),
+        nearestFib: +nearestLevel.toFixed(6),
+        diffPct: +diffPct.toFixed(2),
         volumeLower,
-        nearFib,
+        bullishSwing,
       },
     };
   }

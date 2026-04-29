@@ -1,5 +1,5 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { AppConfigService } from '../config/app-config.service';
 import { OnEvent } from '@nestjs/event-emitter';
 import { ExecutionService } from '../execution/execution.service';
 import { LoggingService } from '../logging/logging.service';
@@ -16,7 +16,7 @@ export class PositionManagerService implements OnModuleInit {
   private tradeLogIds = new Map<string, string>();
 
   constructor(
-    private readonly config: ConfigService,
+    private readonly config: AppConfigService,
     private readonly execution: ExecutionService,
     private readonly logging: LoggingService,
     private readonly signal: SignalService,
@@ -24,8 +24,18 @@ export class PositionManagerService implements OnModuleInit {
     private readonly ws: HyperliquidWsService,
   ) {}
 
-  async onModuleInit() {
-    await this.syncPositionsFromExchange();
+  onModuleInit() {
+    void this.syncPositionsFromExchange();
+  }
+
+  @OnEvent('ws.ready')
+  handleWsReady(): void {
+    const walletAddress = this.hlClient.getWalletAddress();
+    if (!walletAddress) {
+      return;
+    }
+
+    this.ws.subscribeToUserFills(walletAddress);
   }
 
   // ─── Trade open ────────────────────────────────────────────────
@@ -120,18 +130,15 @@ export class PositionManagerService implements OnModuleInit {
 
     // ── 4. TP1 — close 50% ───────────────────────────────────────
     if (!position.tp1Hit) {
-      const tp1Pct = this.config.get<number>('exits.tp1Percent') / 100;
-      const tp1Price = position.direction === 'long'
-        ? position.entryPrice * (1 + tp1Pct)
-        : position.entryPrice * (1 - tp1Pct);
       const tp1Hit = position.direction === 'long'
-        ? currentPrice >= tp1Price
-        : currentPrice <= tp1Price;
+        ? currentPrice >= position.tp1Price
+        : currentPrice <= position.tp1Price;
 
       if (tp1Hit) {
-        const exitPx = await this.execution.closePosition(position, position.tp1Size, 'TP1');
+        const closeSize = Math.min(position.tp1Size, position.size);
+        const exitPx = await this.execution.closePosition(position, closeSize, 'TP1');
         if (exitPx !== null) {
-          position.size -= position.tp1Size;
+          this.applyPartialClose(position, closeSize, exitPx);
           position.tp1Hit = true;
           position.stopPrice = position.entryPrice; // breakeven
           this.logger.log(`TP1 hit ${position.token} — stop moved to breakeven`);
@@ -141,18 +148,15 @@ export class PositionManagerService implements OnModuleInit {
 
     // ── 5. TP2 — close 35% ───────────────────────────────────────
     if (position.tp1Hit && !position.tp2Hit) {
-      const tp2Pct = this.config.get<number>('exits.tp2Percent') / 100;
-      const tp2Price = position.direction === 'long'
-        ? position.entryPrice * (1 + tp2Pct)
-        : position.entryPrice * (1 - tp2Pct);
       const tp2Hit = position.direction === 'long'
-        ? currentPrice >= tp2Price
-        : currentPrice <= tp2Price;
+        ? currentPrice >= position.tp2Price
+        : currentPrice <= position.tp2Price;
 
       if (tp2Hit) {
-        const exitPx = await this.execution.closePosition(position, position.tp2Size, 'TP2');
+        const closeSize = Math.min(position.tp2Size, position.size);
+        const exitPx = await this.execution.closePosition(position, closeSize, 'TP2');
         if (exitPx !== null) {
-          position.size -= position.tp2Size;
+          this.applyPartialClose(position, closeSize, exitPx);
           position.tp2Hit = true;
           this.logger.log(`TP2 hit ${position.token}`);
         }
@@ -215,7 +219,7 @@ export class PositionManagerService implements OnModuleInit {
       const priceDiff = position.direction === 'long'
         ? exitPrice - position.entryPrice
         : position.entryPrice - exitPrice;
-      const pnlUsd = (priceDiff / position.entryPrice) * position.notional;
+      const pnlUsd = position.realizedPnl + (priceDiff / position.entryPrice) * position.notional;
 
       const tradeLogId = this.tradeLogIds.get(position.id);
       if (tradeLogId) {
@@ -261,11 +265,18 @@ export class PositionManagerService implements OnModuleInit {
           leverage: p.leverage?.value ?? 3,
           size: absSz,
           unrealizedPnl: parseFloat(p.unrealizedPnl ?? '0'),
+          realizedPnl: 0,
           tp1Hit: false,
           tp2Hit: false,
           stopPrice: direction === 'long'
             ? entryPx * (1 - stopPct)
             : entryPx * (1 + stopPct),
+          tp1Price: direction === 'long'
+            ? entryPx * (1 + this.config.get<number>('exits.tp1Percent') / 100)
+            : entryPx * (1 - this.config.get<number>('exits.tp1Percent') / 100),
+          tp2Price: direction === 'long'
+            ? entryPx * (1 + this.config.get<number>('exits.tp2Percent') / 100)
+            : entryPx * (1 - this.config.get<number>('exits.tp2Percent') / 100),
           trailingHighest: entryPx,
           openTime: Date.now() - 3600_000, // conservatively assume 1h ago
           patternsFired: [],
@@ -279,5 +290,26 @@ export class PositionManagerService implements OnModuleInit {
     } catch (err) {
       this.logger.error(`syncPositionsFromExchange failed: ${err.message}`);
     }
+  }
+
+  private applyPartialClose(position: OpenPosition, closeSize: number, exitPrice: number): void {
+    if (closeSize <= 0 || position.size <= 0) {
+      return;
+    }
+
+    const portion = Math.min(1, closeSize / position.size);
+    const closingNotional = position.notional * portion;
+    const closingMargin = position.margin * portion;
+    const priceDiff =
+      position.direction === 'long'
+        ? exitPrice - position.entryPrice
+        : position.entryPrice - exitPrice;
+
+    position.realizedPnl += (priceDiff / position.entryPrice) * closingNotional;
+    position.size = Math.max(0, position.size - closeSize);
+    position.notional = Math.max(0, position.notional - closingNotional);
+    position.margin = Math.max(0, position.margin - closingMargin);
+    position.tp3Size = position.size;
+    position.unrealizedPnl = 0;
   }
 }

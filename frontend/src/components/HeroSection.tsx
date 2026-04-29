@@ -27,7 +27,7 @@ export default function HeroSection({ dashboard, runtime, busy, onScan, onPause,
         <div className="hero-grid">
           <div className="metric">
             <div className="metric-label">Bot State</div>
-            <div className="metric-value">{status ? status.state.replaceAll('_', ' ') : '—'}</div>
+            <div className="metric-value">{status ? status.state.replaceAll('_', ' ') : '-'}</div>
             <div className="metric-sub">
               {status?.pauseReason
                 ? `Pause reason: ${status.pauseReason}`
@@ -39,31 +39,35 @@ export default function HeroSection({ dashboard, runtime, busy, onScan, onPause,
 
           <div className="metric">
             <div className="metric-label">Market</div>
-            <div className="metric-value">{status?.marketCondition ?? '—'}</div>
+            <div className="metric-value">{status?.marketCondition ?? '-'}</div>
             <div className="metric-sub">
               {status
                 ? `SOL 1h ${formatPct(status.marketMoves.sol1h)} | BTC 4h ${formatPct(status.marketMoves.btc4h)}`
-                : '—'}
+                : '-'}
             </div>
           </div>
 
           <div className="metric">
             <div className="metric-label">Today PnL</div>
             <div className="metric-value mono" style={{ color: pnlColor }}>
-              {stats ? formatUsd(stats.todayPnl) : '—'}
+              {stats ? formatUsd(stats.todayPnl) : '-'}
             </div>
             <div className="metric-sub">
-              {stats ? `Week ${formatUsd(stats.weekPnl)} | Win rate ${Number(stats.winRatePct ?? 0).toFixed(1)}%` : '—'}
+              {stats
+                ? `Week ${formatUsd(stats.weekPnl)} | Win rate ${Number(stats.winRatePct ?? 0).toFixed(1)}%`
+                : '-'}
             </div>
           </div>
 
           <div className="metric">
             <div className="metric-label">Coverage</div>
             <div className="metric-value mono">
-              {status ? `${status.openPositions}/${status.maxPositions}` : '—'}
+              {status ? `${status.openPositions}/${status.maxPositions}` : '-'}
             </div>
             <div className="metric-sub">
-              {status ? `${status.trackedTokens} tracked tokens` : '—'}
+              {status
+                ? `${status.trackedTokens} tracked | ${status.scanDiagnostics?.candidatesFound ?? 0} watchlist | ${status.scanDiagnostics?.signalsFound ?? 0} signals`
+                : '-'}
             </div>
           </div>
         </div>
@@ -73,7 +77,7 @@ export default function HeroSection({ dashboard, runtime, busy, onScan, onPause,
         <div className="status-row">
           <div>
             <div className="mini">Runtime</div>
-            <strong>{runtime ? runtime.mode.toUpperCase() : '—'}</strong>
+            <strong>{runtime ? runtime.mode.toUpperCase() : '-'}</strong>
           </div>
           <span className={`pill ${runtime?.isRunning ? 'warn' : 'neutral'}`}>
             {runtime?.isRunning ? 'Scan Running' : runtime ? `Every ${runtime.scanIntervalSeconds}s` : 'Loading'}
@@ -97,7 +101,7 @@ export default function HeroSection({ dashboard, runtime, busy, onScan, onPause,
         <div className="status-row">
           <div>
             <div className="mini">State</div>
-            <strong>{status ? status.state.replaceAll('_', ' ') : '—'}</strong>
+            <strong>{status ? status.state.replaceAll('_', ' ') : '-'}</strong>
           </div>
           {status && (
             <span className={`pill ${statePillClass(status.state)}`}>

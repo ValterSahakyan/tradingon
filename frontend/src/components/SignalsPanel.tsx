@@ -1,23 +1,48 @@
-import type { Signal } from '../types'
+import type { Signal, WatchCandidate } from '../types'
 import { timeAgo, PATTERN_NAMES } from '../utils'
 
 interface Props {
   signals: Signal[]
+  watchlist: WatchCandidate[]
 }
 
-export default function SignalsPanel({ signals }: Props) {
+export default function SignalsPanel({ signals, watchlist }: Props) {
+  const tradable = watchlist.filter(item => item.tradable)
+  const developing = watchlist.filter(item => !item.tradable)
+
   return (
     <div className="panel">
       <div className="panel-head">
         <div className="panel-title">Signals</div>
-        <div className="mini">{signals.length} recent</div>
+        <div className="mini">{signals.length} confirmed | {watchlist.length} watched</div>
       </div>
 
       <div className="signals">
         {signals.length === 0 ? (
-          <div className="empty">No signals recorded yet.</div>
+          <div className="empty-state">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="12" y1="8" x2="12" y2="12"/>
+              <line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+            <p>No confirmed signals yet</p>
+          </div>
         ) : (
           signals.map((sig, i) => <SignalCard key={`${sig.token}-${i}`} sig={sig} />)
+        )}
+
+        {tradable.length > 0 && (
+          <>
+            <div className="panel-title" style={{ marginTop: 12 }}>Tradeable Watchlist</div>
+            {tradable.map((item, i) => <CandidateCard key={`${item.token}-tradable-${i}`} item={item} />)}
+          </>
+        )}
+
+        {developing.length > 0 && (
+          <>
+            <div className="panel-title" style={{ marginTop: 12 }}>Developing Setups</div>
+            {developing.map((item, i) => <CandidateCard key={`${item.token}-watch-${i}`} item={item} />)}
+          </>
         )}
       </div>
     </div>
@@ -49,6 +74,37 @@ function SignalCard({ sig }: { sig: Signal }) {
             ))
           : <span className="mini">No pattern metadata</span>}
       </div>
+    </div>
+  )
+}
+
+function CandidateCard({ item }: { item: WatchCandidate }) {
+  return (
+    <div className="signal">
+      <div className="signal-top">
+        <div>
+          <div className="token" style={{ fontSize: 16 }}>{item.token}</div>
+          <div className="mini">
+            {(item.direction ?? 'watch').toUpperCase()} | Score {item.score}
+          </div>
+        </div>
+        <span className={`pill ${item.tradable ? 'good' : 'warn'}`}>
+          {item.tradable ? 'tradeable' : 'watch'}
+        </span>
+      </div>
+
+      <div className="signal-meta">
+        <span className="mono">Price {Number(item.currentPrice).toFixed(6)}</span>
+        <span>{timeAgo(item.timestamp)}</span>
+      </div>
+
+      <div className="tags">
+        {item.patternsFired.map(id => (
+          <span key={id} className="tag">{PATTERN_NAMES[id] ?? id}</span>
+        ))}
+      </div>
+
+      {item.reason && <div className="mini" style={{ marginTop: 8 }}>{item.reason}</div>}
     </div>
   )
 }

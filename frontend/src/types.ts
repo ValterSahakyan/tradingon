@@ -7,6 +7,15 @@ export interface BotStatus {
   openPositions: number
   maxPositions: number
   trackedTokens: number
+  scanDiagnostics?: {
+    tokensSeen: number
+    tokensEvaluated: number
+    tokensWithCandles: number
+    insufficientCandles: number
+    signalsFound: number
+    candidatesFound: number
+    rejectReasons: Record<string, number>
+  }
 }
 
 export interface DailyStats {
@@ -41,6 +50,17 @@ export interface Signal {
   patternsFired: string[]
 }
 
+export interface WatchCandidate {
+  token: string
+  direction: 'long' | 'short' | null
+  score: number
+  currentPrice: number
+  timestamp: number
+  patternsFired: string[]
+  tradable: boolean
+  reason: string | null
+}
+
 export interface Trade {
   token: string
   direction: string
@@ -61,6 +81,7 @@ export interface DashboardData {
   status: BotStatus
   positions: Position[]
   signals: Signal[]
+  watchlist: WatchCandidate[]
   trades: Trade[]
   pnlChart: PnlPoint[]
   stats: DailyStats

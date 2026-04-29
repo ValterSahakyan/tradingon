@@ -1,5 +1,5 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { AppConfigService } from '../config/app-config.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import WebSocket = require('ws');
 
@@ -19,11 +19,12 @@ export class HyperliquidWsService implements OnModuleInit, OnModuleDestroy {
   private isShuttingDown = false;
 
   constructor(
-    private readonly config: ConfigService,
+    private readonly config: AppConfigService,
     private readonly emitter: EventEmitter2,
   ) {}
 
   async onModuleInit() {
+    await this.config.waitUntilReady();
     this.connect();
   }
 
@@ -110,6 +111,7 @@ export class HyperliquidWsService implements OnModuleInit, OnModuleDestroy {
   }
 
   private cleanup() {
+    if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null; }
     if (this.pingTimer) { clearInterval(this.pingTimer); this.pingTimer = null; }
     if (this.ws) { this.ws.removeAllListeners(); this.ws.terminate(); this.ws = null; }
   }

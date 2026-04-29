@@ -15,7 +15,13 @@ export default function PositionsPanel({ positions }: Props) {
 
       <div className="positions">
         {positions.length === 0 ? (
-          <div className="empty">No open positions.</div>
+          <div className="empty-state">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 3v18h18"/>
+              <path d="m18.7 8-5.1 5.2-2.8-2.7L7 14.3"/>
+            </svg>
+            <p>No active positions tracked</p>
+          </div>
         ) : (
           positions.map((pos, i) => <PositionCard key={`${pos.token}-${i}`} pos={pos} />)
         )}

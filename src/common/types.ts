@@ -26,7 +26,7 @@ export type PatternId = 'volume_spike' | 'bull_bear_flag' | 'fibonacci' | 'accum
 export interface PatternResult {
   fired: boolean;
   direction?: TradeDirection;
-  details?: Record<string, any>;
+  details?: Record<string, unknown>;
 }
 
 export interface TokenScore {
@@ -51,7 +51,39 @@ export interface TradeSignal {
   currentPrice: number;
   suggestedMargin: number;
   notional: number;
+  stopPrice: number;
+  tp1Price: number;
+  tp2Price: number;
   marketCondition: MarketCondition;
+}
+
+export interface ScanCandidate {
+  token: string;
+  direction: TradeDirection | null;
+  score: number;
+  currentPrice: number;
+  patternsFired: PatternId[];
+  tradable: boolean;
+  reason: string | null;
+  marketCondition: MarketCondition;
+  fundingRate: number;
+  marketCap: number;
+  tokenAgeDays: number;
+  timestamp: number;
+}
+
+export interface ScanDiagnostics {
+  startedAt: number;
+  finishedAt: number | null;
+  tokensSeen: number;
+  tokensEvaluated: number;
+  tokensWithCandles: number;
+  openSkipped: number;
+  insufficientCandles: number;
+  signalsFound: number;
+  candidatesFound: number;
+  patternHits: Record<PatternId, number>;
+  rejectReasons: Record<string, number>;
 }
 
 export interface OpenPosition {
@@ -65,9 +97,12 @@ export interface OpenPosition {
   leverage: number;
   size: number; // contracts/coins
   unrealizedPnl: number;
+  realizedPnl: number;
   tp1Hit: boolean;
   tp2Hit: boolean;
   stopPrice: number;
+  tp1Price: number;
+  tp2Price: number;
   trailingHighest: number;
   openTime: number; // unix ms
   patternsFired: PatternId[];

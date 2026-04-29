@@ -7,6 +7,7 @@ import { PositionManagerModule } from '../position-manager/position-manager.modu
 import { RiskModule } from '../risk/risk.module';
 import { LoggingModule } from '../logging/logging.module';
 import { TradeLog } from '../logging/entities/trade-log.entity';
+import { SignalModule } from '../signal/signal.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { TradeLog } from '../logging/entities/trade-log.entity';
     PositionManagerModule,
     RiskModule,
     LoggingModule,
+    SignalModule,
   ],
   controllers: [DashboardController],
   providers: [DashboardService],

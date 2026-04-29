@@ -4,7 +4,12 @@ async function getJson<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(url, options)
   if (!res.ok) {
     const text = await res.text()
-    throw new Error(text || `HTTP ${res.status}`)
+    let parsed: any
+    try {
+      parsed = JSON.parse(text)
+    } catch {}
+    const msg = parsed?.message || parsed?.error || text || `HTTP ${res.status}`
+    throw new Error(typeof msg === 'string' ? msg : JSON.stringify(msg))
   }
   return res.json() as Promise<T>
 }

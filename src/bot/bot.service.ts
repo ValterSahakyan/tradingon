@@ -1,6 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { Cron } from '@nestjs/schedule';
-import { ConfigService } from '@nestjs/config';
+import { Cron, Interval } from '@nestjs/schedule';
+import { AppConfigService } from '../config/app-config.service';
 import { MarketDataService } from '../market-data/market-data.service';
 import { SignalService } from '../signal/signal.service';
 import { PositionManagerService } from '../position-manager/position-manager.service';
@@ -12,6 +12,7 @@ import { DashboardService } from '../dashboard/dashboard.service';
 @Injectable()
 export class BotService implements OnModuleInit {
   private readonly logger = new Logger(BotService.name);
+  private initialized = false;
   private isRunning = false;
   private lastScanAt: number | null = null;
   private lastScanResult:
@@ -22,7 +23,7 @@ export class BotService implements OnModuleInit {
     | null = null;
 
   constructor(
-    private readonly config: ConfigService,
+    private readonly config: AppConfigService,
     private readonly marketData: MarketDataService,
     private readonly signal: SignalService,
     private readonly positions: PositionManagerService,
@@ -32,32 +33,53 @@ export class BotService implements OnModuleInit {
     private readonly dashboard: DashboardService,
   ) {}
 
-  async onModuleInit() {
-    this.logger.log('Bot initializing...');
-    await this.marketData.refreshTokenUniverse();
-    await this.marketData.refreshAll();
-    this.logger.log('Bot ready - waiting for first scan cycle');
+  onModuleInit() {
+    void this.initializeBot();
   }
 
-  @Cron('*/5 * * * *')
-  async runScanCycle(): Promise<void> {
-    if (this.isRunning) {
-      this.logger.warn('Previous scan still running - skipping cycle');
+  @Interval(5_000)
+  async runScheduledTick(): Promise<void> {
+    if (!this.initialized) {
       return;
+    }
+
+    const intervalMs = this.config.get<number>('scan.intervalSeconds') * 1000;
+    const lastScanAt = this.lastScanAt ?? 0;
+    if (Date.now() - lastScanAt < intervalMs) {
+      return;
+    }
+
+    await this.runScanCycle('scheduled');
+  }
+
+  async runScanCycle(source: 'scheduled' | 'manual' = 'scheduled'): Promise<{ ok: boolean; message: string }> {
+    if (this.isRunning) {
+      if (source === 'manual') {
+        this.logger.warn('Previous scan still running - skipping cycle');
+      }
+      return { ok: false, message: 'Scan already running' };
     }
 
     this.isRunning = true;
     try {
       await this.scanCycle();
       this.lastScanAt = Date.now();
-      this.lastScanResult = { ok: true, message: 'Scheduled scan completed' };
+      this.lastScanResult = {
+        ok: true,
+        message: source === 'scheduled' ? 'Scheduled scan completed' : 'Manual scan completed',
+      };
     } catch (err) {
       this.lastScanAt = Date.now();
       this.lastScanResult = { ok: false, message: err.message };
-      this.logger.error(`Scan cycle error: ${err.message}`, err.stack);
+      this.logger.error(
+        `${source === 'scheduled' ? 'Scheduled' : 'Manual'} scan error: ${err.message}`,
+        err.stack,
+      );
     } finally {
       this.isRunning = false;
     }
+
+    return this.lastScanResult ?? { ok: true, message: 'Scan completed' };
   }
 
   @Cron('0 0 * * *')
@@ -71,20 +93,7 @@ export class BotService implements OnModuleInit {
       return { ok: false, message: 'Scan already running' };
     }
 
-    this.isRunning = true;
-    try {
-      await this.scanCycle();
-      this.lastScanAt = Date.now();
-      this.lastScanResult = { ok: true, message: 'Manual scan completed' };
-      return this.lastScanResult;
-    } catch (err) {
-      this.lastScanAt = Date.now();
-      this.lastScanResult = { ok: false, message: err.message };
-      this.logger.error(`Manual scan error: ${err.message}`, err.stack);
-      return this.lastScanResult;
-    } finally {
-      this.isRunning = false;
-    }
+    return this.runScanCycle('manual');
   }
 
   getRuntimeStatus() {
@@ -93,19 +102,41 @@ export class BotService implements OnModuleInit {
       lastScanAt: this.lastScanAt,
       lastScanResult: this.lastScanResult,
       scanIntervalSeconds: this.config.get<number>('scan.intervalSeconds'),
+      liveTradingEnabled: this.config.get<boolean>('execution.enabled'),
+      initialized: this.initialized,
       mode: this.config.get<boolean>('hyperliquid.testnet') ? 'testnet' : 'mainnet',
+      signalDiagnostics: this.signal.getLastDiagnostics(),
     };
+  }
+
+  private async initializeBot(): Promise<void> {
+    try {
+      this.logger.log('Bot initializing...');
+      await this.marketData.refreshTokenUniverse();
+      await this.marketData.refreshAll();
+      this.initialized = true;
+      this.logger.log('Bot ready - waiting for first scan cycle');
+    } catch (err) {
+      this.logger.error(`Bot initialization failed: ${err.message}`, err.stack);
+    }
   }
 
   private async scanCycle(): Promise<void> {
     await this.marketData.refreshAll();
     await this.positions.checkTimeStops();
 
-    const capital = await this.execution.getAccountValue();
-    const safeCapital = await this.risk.checkCapital(capital);
-    if (!safeCapital) {
-      await this.positions.closeAllPositions('emergency');
-      return;
+    const liveTradingEnabled = this.config.get<boolean>('execution.enabled');
+
+    if (liveTradingEnabled) {
+      const capital = await this.execution.getAccountValue();
+      if (capital === null) {
+        throw new Error('Account value unavailable');
+      }
+      const safeCapital = await this.risk.checkCapital(capital);
+      if (!safeCapital) {
+        await this.positions.closeAllPositions('emergency');
+        return;
+      }
     }
 
     const { allowed, reason } = await this.risk.canTrade();

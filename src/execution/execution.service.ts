@@ -1,23 +1,28 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { AppConfigService } from '../config/app-config.service';
 import { HyperliquidClient } from './hyperliquid.client';
 import { OpenPosition, TradeSignal } from '../common/types';
 
 @Injectable()
 export class ExecutionService {
   private readonly logger = new Logger(ExecutionService.name);
-  private readonly LEVERAGE = 3; // hard-coded, never change
 
   constructor(
-    private readonly config: ConfigService,
+    private readonly config: AppConfigService,
     private readonly hl: HyperliquidClient,
   ) {}
 
   async openPosition(signal: TradeSignal): Promise<OpenPosition | null> {
+    if (!this.config.get<boolean>('execution.enabled')) {
+      this.logger.warn(`Execution disabled - refusing to open ${signal.token}`);
+      return null;
+    }
+
     const { token, direction, currentPrice, suggestedMargin, notional } = signal;
+    const leverage = this.config.get<number>('capital.leverage');
 
     // Always set isolated margin + leverage before entering
-    await this.hl.setLeverage(token, this.LEVERAGE);
+    await this.hl.setLeverage(token, leverage);
 
     const isBuy = direction === 'long';
     const sz = this.calculateSize(notional, currentPrice);
@@ -44,11 +49,6 @@ export class ExecutionService {
       return null;
     }
 
-    const stopLossPct = this.config.get<number>('exits.stopLossPercent') / 100;
-    const stopPrice = isBuy
-      ? fillPrice * (1 - stopLossPct)
-      : fillPrice * (1 + stopLossPct);
-
     // Use actual filled size if available (partial fills on IOC)
     const filledSz = result.totalSz && result.totalSz > 0 ? result.totalSz : sz;
 
@@ -59,13 +59,16 @@ export class ExecutionService {
       entryPrice: fillPrice,
       currentPrice: fillPrice,
       margin: suggestedMargin,
-      notional: filledSz * fillPrice / this.LEVERAGE,
-      leverage: this.LEVERAGE,
+      notional: (filledSz * fillPrice) / leverage,
+      leverage,
       size: filledSz,
       unrealizedPnl: 0,
+      realizedPnl: 0,
       tp1Hit: false,
       tp2Hit: false,
-      stopPrice,
+      stopPrice: signal.stopPrice,
+      tp1Price: signal.tp1Price,
+      tp2Price: signal.tp2Price,
       trailingHighest: fillPrice,
       openTime: Date.now(),
       patternsFired: signal.patternsFired,
@@ -77,7 +80,7 @@ export class ExecutionService {
     };
 
     this.logger.log(
-      `Opened ${direction} ${token} @ ${fillPrice} | sz: ${filledSz} | stop: ${stopPrice}`,
+      `Opened ${direction} ${token} @ ${fillPrice} | sz: ${filledSz} | stop: ${signal.stopPrice}`,
     );
     return position;
   }
@@ -87,6 +90,11 @@ export class ExecutionService {
     sizeToClose: number,
     reason: string,
   ): Promise<number | null> {
+    if (!this.config.get<boolean>('execution.enabled')) {
+      this.logger.warn(`Execution disabled - refusing to close ${position.token} (${reason})`);
+      return null;
+    }
+
     const isBuy = position.direction === 'short'; // close long = sell; close short = buy
     const result = await this.hl.placeMarketOrder(position.token, isBuy, sizeToClose, true);
 
@@ -107,7 +115,7 @@ export class ExecutionService {
     return this.closePosition(position, position.size, reason);
   }
 
-  async getAccountValue(): Promise<number> {
+  async getAccountValue(): Promise<number | null> {
     return this.hl.getAccountValue();
   }
 

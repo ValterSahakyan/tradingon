@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { AppConfigService } from '../config/app-config.service';
 import { LoggingService } from '../logging/logging.service';
 
 export type BotState =
@@ -28,7 +28,7 @@ export class RiskService {
   private pauseTimer: PauseTimer | null = null;
 
   constructor(
-    private readonly config: ConfigService,
+    private readonly config: AppConfigService,
     private readonly logging: LoggingService,
   ) {}
 
@@ -63,12 +63,12 @@ export class RiskService {
     const pauseDay = this.config.get<number>('risk.consecutiveLossPauseDay');
 
     if (consecutive >= pauseDay) {
-      this.pauseUntilTomorrow('5_consecutive_losses');
+      this.pauseUntilTomorrow('5_consecutive_losses', 'paused_consecutive_loss');
       return { allowed: false, reason: 'consecutive_loss_pause_day' };
     }
 
     if (consecutive >= pause2h) {
-      this.pauseFor(2 * 3600_000, '3_consecutive_losses');
+      this.pauseFor(2 * 3600_000, '3_consecutive_losses', 'paused_consecutive_loss');
       return { allowed: false, reason: 'consecutive_loss_pause_2h' };
     }
 
@@ -96,7 +96,7 @@ export class RiskService {
 
   pause(reason: string, durationMs?: number): void {
     if (durationMs) {
-      this.pauseFor(durationMs, reason);
+      this.pauseFor(durationMs, reason, 'paused_bear_market');
     } else {
       this.state = 'paused_bear_market';
       this.logger.warn(`Bot paused — ${reason}`);
@@ -132,26 +132,27 @@ export class RiskService {
 
   // ─── Internal ──────────────────────────────────────────────────
 
-  private pauseFor(ms: number, reason: string): void {
+  private pauseFor(ms: number, reason: string, state: BotState): void {
     const until = Date.now() + ms;
     this.pauseTimer = { until, reason };
-    this.state = 'paused_consecutive_loss';
+    this.state = state;
     this.logger.warn(`Bot paused for ${Math.round(ms / 60_000)} min — ${reason}`);
   }
 
-  private pauseUntilTomorrow(reason: string): void {
+  private pauseUntilTomorrow(reason: string, state: BotState): void {
     const tomorrow = new Date();
     tomorrow.setHours(24, 0, 0, 0);
     const ms = tomorrow.getTime() - Date.now();
-    this.pauseFor(ms, reason);
-    this.state = 'paused_consecutive_loss';
+    this.pauseFor(ms, reason, state);
   }
 
   private checkPauseExpiry(): void {
     if (
       this.pauseTimer &&
       Date.now() >= this.pauseTimer.until &&
-      this.state === 'paused_consecutive_loss'
+      (this.state === 'paused_consecutive_loss' ||
+        this.state === 'paused_daily_limit' ||
+        this.state === 'paused_bear_market')
     ) {
       this.state = 'active';
       this.pauseTimer = null;
@@ -160,8 +161,7 @@ export class RiskService {
   }
 
   private async triggerCircuitBreaker(code: string, detail: string): Promise<void> {
-    this.state = 'paused_daily_limit';
-    this.pauseUntilTomorrow(code);
+    this.pauseUntilTomorrow(code, 'paused_daily_limit');
     await this.logging.markCircuitBreaker(`${code}: ${detail}`);
     this.logger.error(`Circuit breaker: ${code} — ${detail}`);
   }

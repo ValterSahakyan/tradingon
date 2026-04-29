@@ -1,10 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { AppConfigService } from '../../config/app-config.service';
 import { Candle, PatternResult, TradeDirection } from '../../common/types';
 
 @Injectable()
 export class VolumeSpikePattern {
-  constructor(private readonly config: ConfigService) {}
+  constructor(private readonly config: AppConfigService) {}
 
   detect(candles: Candle[]): PatternResult {
     if (candles.length < 21) return { fired: false };

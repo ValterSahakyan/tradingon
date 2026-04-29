@@ -1,5 +1,6 @@
 import { DataSource } from 'typeorm';
 import * as dotenv from 'dotenv';
+import { AppSetting } from './entities/app-setting.entity';
 import { TradeLog } from '../logging/entities/trade-log.entity';
 import { DailyStats } from '../logging/entities/daily-stats.entity';
 
@@ -8,7 +9,7 @@ dotenv.config();
 export const AppDataSource = new DataSource({
   type: 'postgres',
   url: process.env.DATABASE_URL,
-  entities: [TradeLog, DailyStats],
+  entities: [AppSetting, TradeLog, DailyStats],
   migrations: ['dist/migrations/*.js'],
   synchronize: false,
 });

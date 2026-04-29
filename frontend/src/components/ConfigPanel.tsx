@@ -1,4 +1,4 @@
-import { useRef, type FormEvent } from 'react'
+import { useRef, useState, useEffect, type FormEvent } from 'react'
 import type { ConfigSection, ConfigField } from '../types'
 
 interface Props {
@@ -9,10 +9,18 @@ interface Props {
 
 export default function ConfigPanel({ sections, onSave, onReload }: Props) {
   const formRef = useRef<HTMLFormElement>(null)
+  const [activeTab, setActiveTab] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (sections.length > 0 && !activeTab) {
+      setActiveTab(sections[0].section)
+    }
+  }, [sections, activeTab])
 
   function collectValues(): Record<string, unknown> {
     const values: Record<string, unknown> = {}
     if (!formRef.current) return values
+    // Query all inputs, even those hidden via CSS
     const els = formRef.current.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-config-key]')
     els.forEach(el => {
       if ((el as HTMLInputElement).readOnly || (el as HTMLSelectElement).disabled) return
@@ -30,13 +38,32 @@ export default function ConfigPanel({ sections, onSave, onReload }: Props) {
     <div className="panel">
       <div className="panel-head">
         <div className="panel-title">Configuration</div>
-        <div className="mini">Saved to <span className="mono">.env</span></div>
+        <div className="mini">Saved to <span className="mono">database</span></div>
       </div>
+
+      {sections.length > 0 && (
+        <div className="config-tabs">
+          {sections.map(s => (
+            <button
+              key={s.section}
+              type="button"
+              className={`config-tab-btn ${activeTab === s.section ? 'active' : ''}`}
+              onClick={() => setActiveTab(s.section)}
+            >
+              {s.section}
+            </button>
+          ))}
+        </div>
+      )}
 
       <form ref={formRef} onSubmit={handleSubmit}>
         <div className="config-sections">
           {sections.map(section => (
-            <div key={section.section} className="config-section">
+            <div
+              key={section.section}
+              className="config-section"
+              style={{ display: activeTab === section.section ? 'block' : 'none' }}
+            >
               <div className="panel-head" style={{ marginBottom: 0 }}>
                 <div className="panel-title">{section.section}</div>
               </div>
@@ -49,12 +76,7 @@ export default function ConfigPanel({ sections, onSave, onReload }: Props) {
           ))}
         </div>
 
-        <div className="notice">
-          Config changes are written to <span className="mono">.env</span>. Most runtime settings
-          require a process restart before the bot uses the new values.
-        </div>
-
-        <div className="actions" style={{ marginTop: 16 }}>
+        <div className="actions" style={{ marginTop: 24 }}>
           <button type="submit" className="btn-primary">Save Config</button>
           <button type="button" className="btn-secondary" onClick={onReload}>Reload View</button>
         </div>

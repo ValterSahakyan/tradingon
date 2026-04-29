@@ -11,23 +11,27 @@ export default function PnlChart({ data }: Props) {
         <div className="panel-title">PnL Curve</div>
         <div className="mini">Last 7 days</div>
       </div>
-      <div className="chart">
-        <ChartSvg data={data} />
-      </div>
+
+      {!data.length ? (
+        <div className="empty-state">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 3v18h18"/>
+            <path d="m18.7 8-5.1 5.2-2.8-2.7L7 14.3"/>
+          </svg>
+          <p>Insufficient performance history to map curve</p>
+        </div>
+      ) : (
+        <div className="chart">
+          <ChartSvg data={data} />
+        </div>
+      )}
     </div>
   )
 }
 
 function ChartSvg({ data }: { data: PnlPoint[] }) {
-  if (!data.length) {
-    return (
-      <svg viewBox="0 0 100 100" preserveAspectRatio="none">
-        <text x="50" y="54" textAnchor="middle" fill="#8ea3bb" fontSize="8">
-          No PnL data yet
-        </text>
-      </svg>
-    )
-  }
+  if (!data.length) return null
+
 
   const values = data.map(p => Number(p.cumPnl))
   const min = Math.min(...values)
