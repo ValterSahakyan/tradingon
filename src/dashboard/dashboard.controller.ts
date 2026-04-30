@@ -45,6 +45,11 @@ export class DashboardController {
     return this.dashboard.updateConfig(body?.values ?? {});
   }
 
+  @Get('balance')
+  async getBalance() {
+    return this.dashboard.getBalance();
+  }
+
   @Get('all')
   async getAll() {
     return this.dashboard.getAll();

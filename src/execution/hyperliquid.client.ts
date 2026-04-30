@@ -31,28 +31,20 @@ export class HyperliquidClient implements OnModuleInit {
   private readonly logger = new Logger(HyperliquidClient.name);
   private http: AxiosInstance | null = null;
   private isMainnet = false;
-  private configReady = false;
+  private httpReady = false;   // set once — HTTP client never changes
   private wallet: ethers.Wallet | null = null;
+  private accountAddress: string | null = null;
+  private accountAbstraction: string | null = null;
   private assets = new Map<string, AssetMeta>();
+  private assetsLoading: Promise<void> | null = null;
   private closingInFlight = new Set<string>();
+  private cachedAccountValue: number | null = null;
+  private cachedAccountValueAt = 0;
 
   constructor(private readonly config: AppConfigService) {}
 
   async onModuleInit() {
     await this.ensureConfigured();
-    if (!this.configReady) {
-      return;
-    }
-
-    const pk = this.config.get<string>('hyperliquid.privateKey');
-    if (!pk) {
-      this.logger.error('HYPERLIQUID_PRIVATE_KEY not set - execution disabled');
-      return;
-    }
-
-    this.wallet = new ethers.Wallet(pk);
-    this.logger.log(`Wallet: ${this.wallet.address} | Network: ${this.isMainnet ? 'MAINNET' : 'testnet'}`);
-    void this.loadAssetMeta();
   }
 
   async placeMarketOrder(
@@ -61,6 +53,10 @@ export class HyperliquidClient implements OnModuleInit {
     sz: number,
     reduceOnly = false,
   ): Promise<FillResult | null> {
+    if (!await this.ensureReady()) {
+      this.logger.error(`Client not ready — private key not loaded or assets not fetched (coin: ${coin})`);
+      return null;
+    }
     const asset = this.assets.get(coin);
     if (!asset) {
       this.logger.error(`Unknown asset: ${coin}`);
@@ -121,10 +117,11 @@ export class HyperliquidClient implements OnModuleInit {
       return false;
     }
 
+    const vaultAddress = this.getVaultAddress();
     const action = { type: 'cancel', cancels: [{ a: asset.index, o: oid }] };
     try {
-      const { sig, nonce } = await this.signL1Action(action);
-      const res = await http.post('/exchange', { action, nonce, signature: sig, vaultAddress: null });
+      const { sig, nonce } = await this.signL1Action(action, vaultAddress);
+      const res = await http.post('/exchange', { action, nonce, signature: sig, vaultAddress });
       return res.data?.status === 'ok';
     } catch (err) {
       this.logger.error(`Cancel failed: ${err.message}`);
@@ -133,16 +130,18 @@ export class HyperliquidClient implements OnModuleInit {
   }
 
   async setLeverage(coin: string, leverage: number): Promise<void> {
-    const http = await this.getHttp();
+    if (!await this.ensureReady()) return;
+    const http = this.http!;
     const asset = this.assets.get(coin);
-    if (!http || !asset) {
+    if (!asset) {
       return;
     }
 
+    const vaultAddress = this.getVaultAddress();
     const action = { type: 'updateLeverage', asset: asset.index, isCross: false, leverage };
     try {
-      const { sig, nonce } = await this.signL1Action(action);
-      await http.post('/exchange', { action, nonce, signature: sig, vaultAddress: null });
+      const { sig, nonce } = await this.signL1Action(action, vaultAddress);
+      await http.post('/exchange', { action, nonce, signature: sig, vaultAddress });
     } catch (err) {
       this.logger.warn(`setLeverage failed for ${coin}: ${err.message}`);
     }
@@ -169,7 +168,7 @@ export class HyperliquidClient implements OnModuleInit {
     try {
       const res = await http.post('/info', {
         type: 'clearinghouseState',
-        user: this.wallet.address,
+        user: this.accountAddress ?? this.wallet.address,
       });
       return (res.data?.assetPositions ?? [])
         .map((ap: any) => ap.position)
@@ -182,25 +181,94 @@ export class HyperliquidClient implements OnModuleInit {
 
   async getAccountValue(): Promise<number | null> {
     const http = await this.getHttp();
-    if (!http || !this.wallet) {
+    if (!http) {
+      this.logger.warn('getAccountValue: HTTP client not ready (API URL not configured)');
+      return this.cachedAccountValue;
+    }
+    if (!this.wallet) {
+      this.logger.warn('getAccountValue: wallet is null — HYPERLIQUID_PRIVATE_KEY not loaded');
       return null;
     }
 
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        await this.ensureAccountAbstraction();
+        const [perpRes, spotRes] = await Promise.all([
+          http.post('/info', { type: 'clearinghouseState', user: this.accountAddress ?? this.wallet.address }),
+          http.post('/info', { type: 'spotClearinghouseState', user: this.accountAddress ?? this.wallet.address }),
+        ]);
+
+        this.logger.log(`RAW clearinghouseState: ${JSON.stringify(perpRes.data)}`);
+
+        const perpValue = parseFloat(perpRes.data?.marginSummary?.accountValue ?? '0');
+        const spotBalances: any[] = spotRes.data?.balances ?? [];
+        const spotUsdc = spotBalances.find((b: any) => b.coin === 'USDC');
+        const spotTotal = parseFloat(spotUsdc?.total ?? '0');
+
+        this.logger.log(`Balance — perp: $${perpValue.toFixed(2)}, spot USDC: $${spotTotal.toFixed(2)}`);
+
+        if (this.usesUnifiedCollateral()) {
+          const value = spotTotal;
+          if (Number.isFinite(value)) {
+            this.cachedAccountValue = value;
+            this.cachedAccountValueAt = Date.now();
+            return value;
+          }
+          return null;
+        }
+
+        if (perpValue === 0 && spotTotal > 0) {
+          this.logger.warn(`Your $${spotTotal.toFixed(2)} USDC is in the spot wallet. Transfer it to the perp account on app.hyperliquid.xyz to enable trading.`);
+        }
+
+        const value = perpValue;
+        if (Number.isFinite(value)) {
+          this.cachedAccountValue = value;
+          this.cachedAccountValueAt = Date.now();
+          return value;
+        }
+        return null;
+      } catch (err) {
+        const isRateLimit = err.response?.status === 429 || /rate.limit/i.test(err.message);
+        if (isRateLimit && attempt < 3) {
+          const delay = attempt * 2000;
+          this.logger.warn(`getAccountValue rate limited — retrying in ${delay}ms (attempt ${attempt}/3)`);
+          await new Promise((r) => setTimeout(r, delay));
+          continue;
+        }
+        this.logger.warn(`getAccountValue failed: ${err.message}`);
+        // Return stale cache (up to 2 minutes old) rather than crashing the scan
+        const cacheAge = Date.now() - this.cachedAccountValueAt;
+        if (this.cachedAccountValue !== null && cacheAge < 120_000) {
+          this.logger.warn(`Using cached account value $${this.cachedAccountValue.toFixed(2)} (${Math.round(cacheAge / 1000)}s old)`);
+          return this.cachedAccountValue;
+        }
+        return null;
+      }
+    }
+    return null;
+  }
+
+  async getSpotUsdcBalance(): Promise<number | null> {
+    const http = await this.getHttp();
+    if (!http || !this.wallet) return null;
     try {
-      const res = await http.post('/info', {
-        type: 'clearinghouseState',
-        user: this.wallet.address,
-      });
-      const value = parseFloat(res.data?.marginSummary?.accountValue ?? '0');
-      return Number.isFinite(value) ? value : null;
-    } catch (err) {
-      this.logger.warn(`getAccountValue failed: ${err.message}`);
+      const res = await http.post('/info', { type: 'spotClearinghouseState', user: this.accountAddress ?? this.wallet.address });
+      const balances: any[] = res.data?.balances ?? [];
+      const usdc = balances.find((b: any) => b.coin === 'USDC');
+      const total = parseFloat(usdc?.total ?? '0');
+      return Number.isFinite(total) ? total : null;
+    } catch {
       return null;
     }
   }
 
   getWalletAddress(): string | null {
     return this.wallet?.address ?? null;
+  }
+
+  getAccountAddress(): string | null {
+    return this.accountAddress ?? this.wallet?.address ?? null;
   }
 
   async getMidPrice(coin: string): Promise<number> {
@@ -286,14 +354,15 @@ export class HyperliquidClient implements OnModuleInit {
       return null;
     }
 
+    const vaultAddress = this.getVaultAddress();
     const action = { type: 'order', orders, grouping: 'na' };
     try {
-      const { sig, nonce } = await this.signL1Action(action);
+      const { sig, nonce } = await this.signL1Action(action, vaultAddress);
       const res = await http.post('/exchange', {
         action,
         nonce,
         signature: sig,
-        vaultAddress: null,
+        vaultAddress,
       });
 
       const statuses: any[] = res.data?.response?.data?.statuses ?? [];
@@ -353,25 +422,89 @@ export class HyperliquidClient implements OnModuleInit {
   }
 
   private async ensureConfigured(): Promise<void> {
-    if (this.configReady) {
-      return;
-    }
-
     await this.config.waitUntilReady();
-    const apiUrl = this.config.get<string>('hyperliquid.apiUrl');
-    if (!apiUrl) {
-      this.logger.error('Hyperliquid API URL not configured');
+
+    // HTTP client is created once from the API URL (requires restart if URL changes)
+    if (!this.httpReady) {
+      const apiUrl = this.config.get<string>('hyperliquid.apiUrl');
+      if (!apiUrl) {
+        this.logger.error('Hyperliquid API URL not configured');
+        return;
+      }
+      this.isMainnet = !this.config.get<boolean>('hyperliquid.testnet');
+      this.http = axios.create({ baseURL: apiUrl, timeout: 15_000 });
+      this.httpReady = true;
+    }
+
+    // Wallet init is retried on every call until the key is available in DB.
+    // This allows the key to be set via the Config panel without a restart.
+    if (!this.wallet) {
+      const pk = this.config.get<string>('hyperliquid.privateKey');
+      if (!pk) {
+        return; // key not configured yet — try again next call
+      }
+      try {
+        this.wallet = new ethers.Wallet(pk);
+        const mainAddr = this.config.get<string>('hyperliquid.accountAddress');
+        this.accountAddress = (mainAddr || this.wallet.address).toLowerCase();
+        this.logger.log(`Wallet ready: ${this.wallet.address} | Account: ${this.accountAddress} | Network: ${this.isMainnet ? 'MAINNET' : 'testnet'}`);
+      } catch {
+        this.logger.error('HYPERLIQUID_PRIVATE_KEY is invalid — must be a 0x-prefixed 64-char hex private key. Update it in the Config panel.');
+        return;
+      }
+    }
+
+    // Load assets once after wallet is initialized. Guard against concurrent loads.
+    if (this.assets.size === 0 && !this.assetsLoading) {
+      this.assetsLoading = this.loadAssetMeta().finally(() => {
+        this.assetsLoading = null;
+      });
+    }
+    if (this.assetsLoading) {
+      await this.assetsLoading;
+    }
+  }
+
+  private async ensureAccountAbstraction(): Promise<void> {
+    if (this.accountAbstraction || !this.http || !this.wallet) {
       return;
     }
 
-    this.isMainnet = !this.config.get<boolean>('hyperliquid.testnet');
-    this.http = axios.create({ baseURL: apiUrl, timeout: 15_000 });
-    this.configReady = true;
+    try {
+      const res = await this.http.post('/info', {
+        type: 'userAbstraction',
+        user: this.accountAddress ?? this.wallet.address,
+      });
+      const abstraction = typeof res.data === 'string' ? res.data : null;
+      this.accountAbstraction = abstraction;
+      if (abstraction) {
+        this.logger.log(`Account abstraction: ${abstraction}`);
+      }
+    } catch (err) {
+      this.logger.warn(`userAbstraction lookup failed: ${err.message}`);
+    }
+  }
+
+  private usesUnifiedCollateral(): boolean {
+    return this.accountAbstraction === 'unifiedAccount' || this.accountAbstraction === 'portfolioMargin';
+  }
+
+  private getVaultAddress(): string | null {
+    if (!this.wallet || !this.accountAddress) {
+      return null;
+    }
+
+    return this.accountAddress !== this.wallet.address.toLowerCase() ? this.accountAddress : null;
   }
 
   private async getHttp(): Promise<AxiosInstance | null> {
     await this.ensureConfigured();
     return this.http;
+  }
+
+  private async ensureReady(): Promise<boolean> {
+    await this.ensureConfigured();
+    return this.http !== null && this.wallet !== null && this.assets.size > 0;
   }
 
   fmtPrice(price: number): string {

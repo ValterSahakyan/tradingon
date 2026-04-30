@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import type { DashboardData, RuntimeInfo, ConfigSection } from './types'
-import { fetchDashboard, fetchRuntime, fetchConfig, saveConfig, botAction } from './api'
+import { fetchDashboard, fetchRuntime, fetchConfig, saveConfig, botAction, fetchBalance } from './api'
 import Flash, { type FlashState } from './components/Flash'
 import HeroSection from './components/HeroSection'
 import PositionsPanel from './components/PositionsPanel'
@@ -8,6 +8,7 @@ import SignalsPanel from './components/SignalsPanel'
 import PnlChart from './components/PnlChart'
 import TradesTable from './components/TradesTable'
 import ConfigPanel from './components/ConfigPanel'
+import { useVoiceNotifications } from './hooks/useVoiceNotifications'
 
 const INITIAL_LOAD_RETRIES = 10
 const INITIAL_LOAD_DELAY_MS = 1500
@@ -15,18 +16,23 @@ const INITIAL_LOAD_DELAY_MS = 1500
 export default function App() {
   const [dashboard, setDashboard] = useState<DashboardData | null>(null)
   const [runtime, setRuntime] = useState<RuntimeInfo | null>(null)
+  const [balance, setBalance] = useState<{ perpBalance: number | null; spotBalance: number | null; updatedAt: number | null } | null>(null)
   const [config, setConfig] = useState<ConfigSection[]>([])
   const [flash, setFlash] = useState<FlashState | null>(null)
   const [busy, setBusy] = useState(false)
+  const [voiceEnabled, setVoiceEnabled] = useState(false)
+
+  const { lastEvent } = useVoiceNotifications(dashboard, voiceEnabled)
 
   const showFlash = useCallback((message: string, kind: 'good' | 'bad' = 'good') => {
     setFlash({ message, kind, id: Date.now() })
   }, [])
 
   const loadDashboard = useCallback(async () => {
-    const [dash, rt] = await Promise.all([fetchDashboard(), fetchRuntime()])
+    const [dash, rt, bal] = await Promise.all([fetchDashboard(), fetchRuntime(), fetchBalance()])
     setDashboard(dash)
     setRuntime(rt)
+    setBalance(bal)
   }, [])
 
   const loadConfig = useCallback(async () => {
@@ -91,7 +97,11 @@ export default function App() {
       <HeroSection
         dashboard={dashboard}
         runtime={runtime}
+        balance={balance}
         busy={busy}
+        voiceEnabled={voiceEnabled}
+        lastEvent={lastEvent}
+        onVoiceToggle={() => setVoiceEnabled(v => !v)}
         onScan={() => handleBotAction('/api/bot/scan', 'Manual scan requested.', {})}
         onPause={() =>
           handleBotAction('/api/bot/pause', 'Bot paused for 2 hours.', {

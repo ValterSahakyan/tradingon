@@ -8,6 +8,7 @@ import { RiskModule } from '../risk/risk.module';
 import { LoggingModule } from '../logging/logging.module';
 import { TradeLog } from '../logging/entities/trade-log.entity';
 import { SignalModule } from '../signal/signal.module';
+import { ExecutionModule } from '../execution/execution.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { SignalModule } from '../signal/signal.module';
     RiskModule,
     LoggingModule,
     SignalModule,
+    ExecutionModule,
   ],
   controllers: [DashboardController],
   providers: [DashboardService],

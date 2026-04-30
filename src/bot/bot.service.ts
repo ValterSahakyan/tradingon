@@ -127,8 +127,12 @@ export class BotService implements OnModuleInit {
 
     const liveTradingEnabled = this.config.get<boolean>('execution.enabled');
 
+    const capital = await this.execution.getAccountValue();
+    if (capital !== null) {
+      this.dashboard.pushAccountValue(capital);
+    }
+
     if (liveTradingEnabled) {
-      const capital = await this.execution.getAccountValue();
       if (capital === null) {
         throw new Error('Account value unavailable');
       }

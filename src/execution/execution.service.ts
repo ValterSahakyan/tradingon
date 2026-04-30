@@ -18,18 +18,27 @@ export class ExecutionService {
       return null;
     }
 
-    const { token, direction, currentPrice, suggestedMargin, notional } = signal;
+    const { token, direction, currentPrice, notional } = signal;
     const leverage = this.config.get<number>('capital.leverage');
+    const minOrderNotional = this.config.get<number>('capital.minOrderNotional');
+    const effectiveNotional = Math.max(notional, minOrderNotional);
+    const effectiveMargin = effectiveNotional / leverage;
 
     // Always set isolated margin + leverage before entering
     await this.hl.setLeverage(token, leverage);
 
     const isBuy = direction === 'long';
-    const sz = this.calculateSize(notional, currentPrice);
+    const sz = this.calculateSize(effectiveNotional, currentPrice);
 
     if (sz <= 0) {
       this.logger.warn(`Zero size for ${token} — skipping`);
       return null;
+    }
+
+    if (effectiveNotional > notional) {
+      this.logger.log(
+        `Bumping ${token} order size from $${notional.toFixed(2)} to $${effectiveNotional.toFixed(2)} to satisfy minimum order notional`,
+      );
     }
 
     const result = await this.hl.placeMarketOrder(token, isBuy, sz);
@@ -58,8 +67,8 @@ export class ExecutionService {
       direction,
       entryPrice: fillPrice,
       currentPrice: fillPrice,
-      margin: suggestedMargin,
-      notional: (filledSz * fillPrice) / leverage,
+      margin: effectiveMargin,
+      notional: filledSz * fillPrice,
       leverage,
       size: filledSz,
       unrealizedPnl: 0,
@@ -117,6 +126,10 @@ export class ExecutionService {
 
   async getAccountValue(): Promise<number | null> {
     return this.hl.getAccountValue();
+  }
+
+  async getSpotUsdcBalance(): Promise<number | null> {
+    return this.hl.getSpotUsdcBalance();
   }
 
   private calculateSize(notional: number, price: number): number {

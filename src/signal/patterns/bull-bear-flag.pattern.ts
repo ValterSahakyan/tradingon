@@ -7,13 +7,16 @@ export class BullBearFlagPattern {
   constructor(private readonly config: AppConfigService) {}
 
   detect(candles: Candle[]): PatternResult {
-    if (candles.length < 8) {
+    // Needs 20 pole + 4 consolidation + 1 current = 25 minimum
+    if (candles.length < 25) {
       return { fired: false };
     }
 
     const current = candles[candles.length - 1];
-    const poleCandles = candles.slice(-7, -4);
-    const consolidationCandles = candles.slice(-4, -1);
+    // Pole: 20 candles (~100 min) — enough for a realistic directional move
+    const poleCandles = candles.slice(-25, -5);
+    // Consolidation: 4 candles immediately before the breakout candle
+    const consolidationCandles = candles.slice(-5, -1);
     const sharpMove = this.config.get<number>('patterns.flagSharpMovePercent');
     const consolidationSpread = this.config.get<number>('patterns.flagConsolidationSpread');
 

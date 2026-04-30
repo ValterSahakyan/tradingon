@@ -4,13 +4,17 @@ import { formatUsd, formatPct, formatTime, timeAgo, statePillClass } from '../ut
 interface Props {
   dashboard: DashboardData | null
   runtime: RuntimeInfo | null
+  balance: { perpBalance: number | null; spotBalance: number | null; updatedAt: number | null } | null
   busy: boolean
+  voiceEnabled: boolean
+  lastEvent: string | null
+  onVoiceToggle: () => void
   onScan: () => void
   onPause: () => void
   onResume: () => void
 }
 
-export default function HeroSection({ dashboard, runtime, busy, onScan, onPause, onResume }: Props) {
+export default function HeroSection({ dashboard, runtime, balance, busy, voiceEnabled, lastEvent, onVoiceToggle, onScan, onPause, onResume }: Props) {
   const status = dashboard?.status
   const stats = dashboard?.stats
 
@@ -56,6 +60,18 @@ export default function HeroSection({ dashboard, runtime, busy, onScan, onPause,
               {stats
                 ? `Week ${formatUsd(stats.weekPnl)} | Win rate ${Number(stats.winRatePct ?? 0).toFixed(1)}%`
                 : '-'}
+            </div>
+          </div>
+
+          <div className="metric">
+            <div className="metric-label">Balance</div>
+            <div className="metric-value mono" style={{ color: (balance?.perpBalance ?? 0) > 0 ? 'var(--good)' : balance?.spotBalance ?? 0 > 0 ? 'var(--warn)' : undefined }}>
+              {balance?.perpBalance != null ? `$${Number(balance.perpBalance).toFixed(2)}` : '-'}
+            </div>
+            <div className="metric-sub">
+              {balance?.spotBalance != null && balance.spotBalance > 0
+                ? `Spot: $${Number(balance.spotBalance).toFixed(2)} — transfer to perp`
+                : balance?.updatedAt ? `Updated ${timeAgo(balance.updatedAt)}` : 'Loading...'}
             </div>
           </div>
 
@@ -120,6 +136,26 @@ export default function HeroSection({ dashboard, runtime, busy, onScan, onPause,
             <button className="btn-danger" disabled={busy} onClick={onPause}>Pause 2h</button>
             <button className="btn-secondary" disabled={busy} onClick={onResume}>Resume</button>
           </div>
+        </div>
+
+        <div className="status-row voice-row">
+          <div className="voice-info">
+            <div className="mini">Voice Alerts</div>
+            <div className="voice-last">{lastEvent ?? 'No events yet'}</div>
+          </div>
+          <button
+            className={`voice-toggle ${voiceEnabled ? 'voice-toggle--on' : ''}`}
+            onClick={onVoiceToggle}
+            aria-pressed={voiceEnabled}
+            title={voiceEnabled ? 'Click to mute' : 'Click to enable voice'}
+          >
+            <span className="voice-toggle__track">
+              <span className="voice-toggle__thumb" />
+            </span>
+            <span className="voice-toggle__label">
+              {voiceEnabled ? <><span className="voice-dot" />ON</> : 'OFF'}
+            </span>
+          </button>
         </div>
       </div>
     </section>

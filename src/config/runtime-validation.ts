@@ -45,29 +45,21 @@ function validatePrivateKey(value: EnvValue): void {
   }
 
   if (!/^0x[a-fA-F0-9]{64}$/.test(value.trim())) {
-    throw new Error('HYPERLIQUID_PRIVATE_KEY must be a 0x-prefixed 32-byte hex string');
+    // Don't crash — the client will log a clear error and disable execution
+    console.warn('[WARNING] HYPERLIQUID_PRIVATE_KEY looks invalid — must be a 0x-prefixed 64-hex-char private key, not a wallet address. Update it in the Config panel.');
   }
 }
 
 export function validateRuntimeEnv(): void {
   readRequired('DATABASE_URL');
 
-  const liveTrading = readBoolean('LIVE_TRADING_ENABLED', false);
-  const allowMainnetTrading = readBoolean('ALLOW_MAINNET_TRADING', false);
-  const testnet = readBoolean('HYPERLIQUID_TESTNET', true);
-  const privateKey = process.env.HYPERLIQUID_PRIVATE_KEY?.trim();
-
-  validatePrivateKey(privateKey);
-
-  if (liveTrading && !privateKey) {
-    throw new Error('HYPERLIQUID_PRIVATE_KEY is required when LIVE_TRADING_ENABLED=true');
-  }
-
-  if (liveTrading && !testnet && !allowMainnetTrading) {
-    throw new Error(
-      'ALLOW_MAINNET_TRADING=true is required when live trading is enabled on mainnet',
-    );
-  }
+  // Trading flags and private key are managed in the database via the
+  // Config panel — do not cross-validate them here against env vars.
+  // If an env override is supplied, just verify its format.
+  validatePrivateKey(process.env.HYPERLIQUID_PRIVATE_KEY?.trim());
+  readBoolean('LIVE_TRADING_ENABLED', false);
+  readBoolean('ALLOW_MAINNET_TRADING', false);
+  readBoolean('HYPERLIQUID_TESTNET', false);
 
   readBoolean('DATABASE_SSL', false);
   readBoolean('TYPEORM_SYNCHRONIZE', false);
@@ -76,6 +68,7 @@ export function validateRuntimeEnv(): void {
   readNumber('INITIAL_CAPITAL', 200, 0);
   readNumber('MAX_CONCURRENT_POSITIONS', 5, 1);
   readNumber('DEFAULT_LEVERAGE', 3, 1);
+  readNumber('MIN_ORDER_NOTIONAL', 10, 1);
   readNumber('STOP_LOSS_PERCENT', 7, 0);
   readNumber('TP1_PERCENT', 10, 0);
   readNumber('TP2_PERCENT', 20, 0);

@@ -198,7 +198,7 @@ export class SignalService {
     }
 
     const confirmationPatterns: PatternId[] = [];
-    if (volumeSpike.fired) {
+    if (volumeSpike.fired && volumeSpike.direction === direction) {
       confirmationPatterns.push('volume_spike');
     }
     if (bullBearFlag.fired && bullBearFlag.direction === direction) {

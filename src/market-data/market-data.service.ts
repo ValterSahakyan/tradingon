@@ -135,12 +135,12 @@ export class MarketDataService implements OnModuleInit {
   }
 
   async refreshAllCandles(): Promise<void> {
-    const batchSize = 5;
+    const batchSize = 3;
     for (let i = 0; i < this.trackedTokens.length; i += batchSize) {
       const batch = this.trackedTokens.slice(i, i + batchSize);
       await Promise.allSettled(batch.map((token) => this.refreshCandles(token)));
       if (i + batchSize < this.trackedTokens.length) {
-        await new Promise((resolve) => setTimeout(resolve, 500));
+        await new Promise((resolve) => setTimeout(resolve, 1500));
       }
     }
   }

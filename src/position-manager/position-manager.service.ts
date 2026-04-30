@@ -30,12 +30,12 @@ export class PositionManagerService implements OnModuleInit {
 
   @OnEvent('ws.ready')
   handleWsReady(): void {
-    const walletAddress = this.hlClient.getWalletAddress();
-    if (!walletAddress) {
+    const accountAddress = this.hlClient.getAccountAddress();
+    if (!accountAddress) {
       return;
     }
 
-    this.ws.subscribeToUserFills(walletAddress);
+    this.ws.subscribeToUserFills(accountAddress);
   }
 
   // ─── Trade open ────────────────────────────────────────────────

@@ -8,6 +8,7 @@ export default () => ({
   },
   hyperliquid: {
     privateKey: process.env.HYPERLIQUID_PRIVATE_KEY,
+    accountAddress: process.env.HYPERLIQUID_ACCOUNT_ADDRESS || null,
     testnet: process.env.HYPERLIQUID_TESTNET === 'true',
     apiUrl:
       process.env.HYPERLIQUID_API_URL ||
@@ -24,6 +25,7 @@ export default () => ({
     initial: parseFloat(process.env.INITIAL_CAPITAL || '200'),
     maxConcurrentPositions: parseInt(process.env.MAX_CONCURRENT_POSITIONS || '5'),
     leverage: parseFloat(process.env.DEFAULT_LEVERAGE || '3'),
+    minOrderNotional: parseFloat(process.env.MIN_ORDER_NOTIONAL || '10'),
     marginScore2: parseFloat(process.env.MARGIN_SCORE_2 || '4'),
     marginScore3: parseFloat(process.env.MARGIN_SCORE_3 || '5'),
     marginScore4: parseFloat(process.env.MARGIN_SCORE_4 || '6'),

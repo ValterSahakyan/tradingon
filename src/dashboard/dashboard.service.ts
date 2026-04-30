@@ -6,6 +6,7 @@ import { MarketDataService } from '../market-data/market-data.service';
 import { PositionManagerService } from '../position-manager/position-manager.service';
 import { RiskService } from '../risk/risk.service';
 import { LoggingService } from '../logging/logging.service';
+import { ExecutionService } from '../execution/execution.service';
 import { TradeLog } from '../logging/entities/trade-log.entity';
 import { TradeSignal } from '../common/types';
 import { SettingField } from '../config/app-settings.definitions';
@@ -14,6 +15,8 @@ import { SignalService } from '../signal/signal.service';
 @Injectable()
 export class DashboardService {
   private recentSignals: (TradeSignal & { timestamp: number })[] = [];
+  private accountValue: number | null = null;
+  private accountValueAt: number | null = null;
 
   constructor(
     private readonly config: AppConfigService,
@@ -22,9 +25,27 @@ export class DashboardService {
     private readonly risk: RiskService,
     private readonly logging: LoggingService,
     private readonly signal: SignalService,
+    private readonly execution: ExecutionService,
     @InjectRepository(TradeLog)
     private readonly tradeRepo: Repository<TradeLog>,
   ) {}
+
+  pushAccountValue(value: number) {
+    this.accountValue = value;
+    this.accountValueAt = Date.now();
+  }
+
+  async getBalance(): Promise<{ perpBalance: number | null; spotBalance: number | null; updatedAt: number | null }> {
+    const [perp, spot] = await Promise.all([
+      this.execution.getAccountValue(),
+      this.execution.getSpotUsdcBalance(),
+    ]);
+    if (perp !== null) {
+      this.accountValue = perp;
+      this.accountValueAt = Date.now();
+    }
+    return { perpBalance: perp, spotBalance: spot, updatedAt: Date.now() };
+  }
 
   pushSignals(signals: TradeSignal[]) {
     const now = Date.now();
@@ -50,6 +71,8 @@ export class DashboardService {
       maxPositions: this.config.get<number>('capital.maxConcurrentPositions'),
       pauseUntil: riskSnapshot.pauseTimer?.until ?? null,
       pauseReason: riskSnapshot.pauseTimer?.reason ?? null,
+      accountValue: this.accountValue,
+      accountValueAt: this.accountValueAt,
       timestamp: Date.now(),
       marketMoves: {
         sol1h: +this.marketData.getSolPriceChangePct(3600_000).toFixed(2),

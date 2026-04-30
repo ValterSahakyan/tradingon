@@ -7,6 +7,8 @@ export interface BotStatus {
   openPositions: number
   maxPositions: number
   trackedTokens: number
+  accountValue?: number | null
+  accountValueAt?: number | null
   scanDiagnostics?: {
     tokensSeen: number
     tokensEvaluated: number
@@ -62,6 +64,7 @@ export interface WatchCandidate {
 }
 
 export interface Trade {
+  id: string
   token: string
   direction: string
   entryPrice: number

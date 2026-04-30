@@ -16,6 +16,8 @@ async function getJson<T>(url: string, options?: RequestInit): Promise<T> {
 
 export const fetchDashboard = () => getJson<DashboardData>('/api/dashboard/all')
 
+export const fetchBalance = () => getJson<{ perpBalance: number | null; spotBalance: number | null; updatedAt: number | null }>('/api/dashboard/balance')
+
 export const fetchRuntime = () => getJson<RuntimeInfo>('/api/bot/runtime')
 
 export const fetchConfig = () => getJson<{ sections: ConfigSection[] }>('/api/dashboard/config')
