@@ -144,6 +144,8 @@ export class LoggingService {
       return `No trades today (${today})`;
     }
 
+    const summaryDate = stats.date ?? today;
+
     const totalPnlUsd = this.toNumber(stats.totalPnlUsd);
     const totalFundingPaid = this.toNumber(stats.totalFundingPaid);
     const avgWinUsd = this.toNumber(stats.avgWinUsd);
@@ -151,7 +153,7 @@ export class LoggingService {
     const winRate = stats.totalTrades > 0 ? ((stats.wins / stats.totalTrades) * 100).toFixed(1) : '0.0';
 
     const lines = [
-      `Daily Summary ${today}`,
+      `Daily Summary ${summaryDate}`,
       `Trades: ${stats.totalTrades} | W: ${stats.wins} L: ${stats.losses} | WR: ${winRate}%`,
       `PnL: $${totalPnlUsd.toFixed(2)} | Funding: -$${totalFundingPaid.toFixed(4)}`,
       `Avg Win: $${avgWinUsd.toFixed(2)} | Avg Loss: $${avgLossUsd.toFixed(2)}`,

@@ -26,7 +26,7 @@ Create `/opt/tradingon/.env` on the server. The deployment workflow does not ove
 Minimum example:
 
 ```env
-PORT=3000
+PORT=3002
 POSTGRES_DB=tradingon
 POSTGRES_USER=tradingon
 POSTGRES_PASSWORD=change-me
@@ -74,7 +74,7 @@ The deploy workflow syncs the repository to the server and runs [scripts/deploy-
 - CI runs on pull requests and pushes to `main`.
 - CD runs on pushes to `main` and on manual dispatch.
 - The app is exposed only on `127.0.0.1:3002`; Nginx is the public entrypoint.
-- Health is checked at `http://127.0.0.1:3000/api/health` during deploy.
+- Health is checked at `http://127.0.0.1:3002/api/health` during deploy.
 
 ## 6. Manual recovery commands
 

@@ -18,8 +18,9 @@
     "forceConsistentCasingInFileNames": false,
     "noFallthroughCasesInSwitch": false,
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["server/*"]
     }
   },
-  "exclude": ["frontend", "node_modules", "dist"]
+  "include": ["server/**/*.ts"],
+  "exclude": ["node_modules", "dist", "src", "public"]
 }

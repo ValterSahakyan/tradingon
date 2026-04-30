@@ -3,7 +3,7 @@ set -euo pipefail
 
 APP_DIR="${APP_DIR:-/opt/tradingon}"
 COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.prod.yml}"
-HEALTHCHECK_URL="${HEALTHCHECK_URL:-http://127.0.0.1:3000/api/health}"
+HEALTHCHECK_URL="${HEALTHCHECK_URL:-http://127.0.0.1:3002/api/health}"
 
 cd "$APP_DIR"
 

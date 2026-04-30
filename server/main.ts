@@ -15,7 +15,7 @@ async function bootstrap() {
 
   app.enableShutdownHooks();
   const configService = app.get(ConfigService);
-  const port = configService.get<number>('server.port') || 3000;
+  const port = configService.get<number>('server.port') || 3002;
   logger.log(`Starting HTTP listener on port ${port}`);
   await app.listen(port);
   logger.log(`HTTP listener bound on port ${port}`);

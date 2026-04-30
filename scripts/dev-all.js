@@ -1,14 +1,33 @@
 const { spawn } = require('node:child_process')
 const net = require('node:net')
 const path = require('node:path')
+require('dotenv').config({ path: path.resolve(__dirname, '..', '.env') })
 
 const repoRoot = path.resolve(__dirname, '..')
-const frontendRoot = path.join(repoRoot, 'frontend')
 const isWin = process.platform === 'win32'
 const backendHost = '127.0.0.1'
-const backendPort = 3000
+const backendPort = Number(process.env.PORT || 3002)
+const databaseUrl = process.env.DATABASE_URL || 'postgresql://tradingon:tradingon@localhost:5434/tradingon'
+const databaseStartupTimeoutMs = 60_000
 const backendStartupTimeoutMs = 45_000
 const backendStartupPollMs = 500
+
+function resolveDatabaseEndpoint(connectionString) {
+  try {
+    const url = new URL(connectionString)
+    return {
+      host: url.hostname || '127.0.0.1',
+      port: Number(url.port || 5432),
+    }
+  } catch {
+    return {
+      host: '127.0.0.1',
+      port: 5434,
+    }
+  }
+}
+
+const databaseEndpoint = resolveDatabaseEndpoint(databaseUrl)
 
 function createCommand(command) {
   return isWin
@@ -40,6 +59,28 @@ function startProcess(name, cwd, command, extraEnv = {}) {
   })
 
   return child
+}
+
+function runOneShot(name, cwd, command) {
+  return new Promise((resolveRun, rejectRun) => {
+    const childCommand = createCommand(command)
+    const child = spawn(childCommand.command, childCommand.args, {
+      cwd,
+      env: process.env,
+      stdio: 'inherit',
+      shell: false,
+    })
+
+    child.once('error', rejectRun)
+    child.once('exit', (code) => {
+      if ((code ?? 0) === 0) {
+        resolveRun(undefined)
+        return
+      }
+
+      rejectRun(new Error(`[${name}] exited with code ${code ?? 0}`))
+    })
+  })
 }
 
 let stopping = false
@@ -96,11 +137,17 @@ async function waitForPortOpen(host, port, timeoutMs) {
 }
 
 async function main() {
-  children.push(startProcess('backend', repoRoot, 'start:dev'))
+  const databaseRunning = await isPortOpen(databaseEndpoint.host, databaseEndpoint.port)
+  if (!databaseRunning) {
+    await runOneShot('db', repoRoot, 'docker:db:up')
+    await waitForPortOpen(databaseEndpoint.host, databaseEndpoint.port, databaseStartupTimeoutMs)
+  }
+
+  children.push(startProcess('backend', repoRoot, 'start:api:dev'))
   await waitForPortOpen(backendHost, backendPort, backendStartupTimeoutMs)
 
   children.push(
-    startProcess('frontend', frontendRoot, 'dev', {
+    startProcess('frontend', repoRoot, 'start:ui:dev', {
       SKIP_VITE_BACKEND_AUTOSTART: '1',
     }),
   )

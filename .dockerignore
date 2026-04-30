@@ -1,11 +1,11 @@
 # Dependencies
 node_modules
-frontend/node_modules
+core/node_modules
 
 # Build artifacts (rebuilt inside Docker)
 dist
 public
-frontend/dist
+core/dist
 
 # Git
 .git

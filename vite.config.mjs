@@ -1,19 +1,22 @@
-import { spawn, type ChildProcess } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import net from 'node:net'
 import { resolve } from 'node:path'
-import { defineConfig, type PluginOption } from 'vite'
+import dotenv from 'dotenv'
+import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
+dotenv.config({ path: resolve(process.cwd(), '.env') })
+
 const backendHost = '127.0.0.1'
-const backendPort = 3000
+const backendPort = Number(process.env.PORT || 3002)
 const backendStartupTimeoutMs = 45_000
 const backendStartupPollMs = 500
 
-function isPortOpen(host: string, port: number): Promise<boolean> {
+function isPortOpen(host, port) {
   return new Promise((resolvePort) => {
     const socket = new net.Socket()
 
-    const finish = (open: boolean) => {
+    const finish = (open) => {
       socket.destroy()
       resolvePort(open)
     }
@@ -26,7 +29,7 @@ function isPortOpen(host: string, port: number): Promise<boolean> {
   })
 }
 
-async function waitForPortOpen(host: string, port: number, timeoutMs: number): Promise<void> {
+async function waitForPortOpen(host, port, timeoutMs) {
   const deadline = Date.now() + timeoutMs
 
   while (Date.now() < deadline) {
@@ -40,9 +43,9 @@ async function waitForPortOpen(host: string, port: number, timeoutMs: number): P
   throw new Error(`Backend did not start on ${host}:${port} within ${timeoutMs}ms`)
 }
 
-function ensureBackendRunning(): PluginOption {
-  let backendProcess: ChildProcess | null = null
-  let startupCheck: Promise<void> | null = null
+function ensureBackendRunning() {
+  let backendProcess = null
+  let startupCheck = null
 
   return {
     name: 'ensure-backend-running',
@@ -69,17 +72,18 @@ function ensureBackendRunning(): PluginOption {
           return
         }
 
-        const repoRoot = resolve(__dirname, '..')
+        const repoRoot = resolve(process.cwd())
         const backendCommand =
           process.platform === 'win32'
             ? {
                 command: process.env.ComSpec ?? 'cmd.exe',
-                args: ['/d', '/s', '/c', 'npm run start:dev'],
+                args: ['/d', '/s', '/c', 'npm run start:api:dev'],
               }
             : {
                 command: 'npm',
-                args: ['run', 'start:dev'],
+                args: ['run', 'start:api:dev'],
               }
+
         backendProcess = spawn(backendCommand.command, backendCommand.args, {
           cwd: repoRoot,
           stdio: 'inherit',
@@ -108,7 +112,7 @@ function ensureBackendRunning(): PluginOption {
 export default defineConfig({
   plugins: [react(), ensureBackendRunning()],
   build: {
-    outDir: '../public',
+    outDir: 'public',
     emptyOutDir: true,
   },
   server: {

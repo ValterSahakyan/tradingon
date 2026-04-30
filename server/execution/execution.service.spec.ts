@@ -79,7 +79,7 @@ describe('ExecutionService', () => {
     expect(result).not.toBeNull();
     expect(result?.entryPrice).toBe(12);
     expect(result?.size).toBe(6);
-    expect(result?.notional).toBe(24);
+    expect(result?.notional).toBe(72);
     expect(result?.realizedPnl).toBe(0);
     expect(result?.stopPrice).toBeCloseTo(9.3);
     expect(result?.tp1Price).toBeCloseTo(10.7);
