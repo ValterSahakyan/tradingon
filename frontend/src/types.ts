@@ -98,6 +98,13 @@ export interface RuntimeInfo {
   lastScanResult?: { ok: boolean; message: string }
 }
 
+export interface AuthSession {
+  authEnabled: boolean
+  authenticated: boolean
+  address: string | null
+  allowedWallet: string | null
+}
+
 export interface ConfigField {
   key: string
   label: string

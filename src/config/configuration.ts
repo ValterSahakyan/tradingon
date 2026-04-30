@@ -77,4 +77,9 @@ export default () => ({
     ssl: process.env.DATABASE_SSL === 'true',
     synchronize: process.env.TYPEORM_SYNCHRONIZE === 'true',
   },
+  auth: {
+    allowedWallet: process.env.DASHBOARD_ALLOWED_WALLET || null,
+    sessionSecret: process.env.DASHBOARD_AUTH_SECRET || null,
+    sessionTtlHours: parseInt(process.env.DASHBOARD_SESSION_TTL_HOURS || '12'),
+  },
 });

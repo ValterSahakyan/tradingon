@@ -50,6 +50,16 @@ function validatePrivateKey(value: EnvValue): void {
   }
 }
 
+function validateWalletAddress(name: string, value: EnvValue): void {
+  if (!value) {
+    return;
+  }
+
+  if (!/^0x[a-fA-F0-9]{40}$/.test(value.trim())) {
+    throw new Error(`${name} must be a valid 0x-prefixed wallet address`);
+  }
+}
+
 export function validateRuntimeEnv(): void {
   readRequired('DATABASE_URL');
 
@@ -64,7 +74,17 @@ export function validateRuntimeEnv(): void {
   readBoolean('DATABASE_SSL', false);
   readBoolean('TYPEORM_SYNCHRONIZE', false);
 
+  const allowedWallet = process.env.DASHBOARD_ALLOWED_WALLET?.trim();
+  validateWalletAddress('DASHBOARD_ALLOWED_WALLET', allowedWallet);
+  if (allowedWallet) {
+    const sessionSecret = readRequired('DASHBOARD_AUTH_SECRET');
+    if (sessionSecret.length < 32) {
+      throw new Error('DASHBOARD_AUTH_SECRET must be at least 32 characters');
+    }
+  }
+
   readNumber('PORT', 3000, 1);
+  readNumber('DASHBOARD_SESSION_TTL_HOURS', 12, 1);
   readNumber('INITIAL_CAPITAL', 200, 0);
   readNumber('MAX_CONCURRENT_POSITIONS', 5, 1);
   readNumber('DEFAULT_LEVERAGE', 3, 1);

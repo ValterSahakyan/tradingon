@@ -14,6 +14,7 @@ import { DailyStats } from './logging/entities/daily-stats.entity';
 import { BotModule } from './bot/bot.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { HealthModule } from './health/health.module';
+import { AuthModule } from './auth/auth.module';
 
 @Module({
   imports: [
@@ -51,6 +52,7 @@ import { HealthModule } from './health/health.module';
     }),
 
     // Feature modules
+    AuthModule,
     BotModule,
     DashboardModule,
     HealthModule,

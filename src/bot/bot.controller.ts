@@ -1,8 +1,10 @@
-import { Body, Controller, Get, Post } from '@nestjs/common';
+import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
 import { BotService } from './bot.service';
 import { RiskService } from '../risk/risk.service';
+import { WalletSessionGuard } from '../auth/wallet-session.guard';
 
 @Controller('api/bot')
+@UseGuards(WalletSessionGuard)
 export class BotController {
   constructor(
     private readonly bot: BotService,

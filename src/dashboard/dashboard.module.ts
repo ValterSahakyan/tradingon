@@ -9,6 +9,7 @@ import { LoggingModule } from '../logging/logging.module';
 import { TradeLog } from '../logging/entities/trade-log.entity';
 import { SignalModule } from '../signal/signal.module';
 import { ExecutionModule } from '../execution/execution.module';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { ExecutionModule } from '../execution/execution.module';
     LoggingModule,
     SignalModule,
     ExecutionModule,
+    AuthModule,
   ],
   controllers: [DashboardController],
   providers: [DashboardService],

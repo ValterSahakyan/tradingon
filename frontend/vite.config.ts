@@ -6,6 +6,8 @@ import react from '@vitejs/plugin-react'
 
 const backendHost = '127.0.0.1'
 const backendPort = 3000
+const backendStartupTimeoutMs = 45_000
+const backendStartupPollMs = 500
 
 function isPortOpen(host: string, port: number): Promise<boolean> {
   return new Promise((resolvePort) => {
@@ -24,6 +26,20 @@ function isPortOpen(host: string, port: number): Promise<boolean> {
   })
 }
 
+async function waitForPortOpen(host: string, port: number, timeoutMs: number): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+
+  while (Date.now() < deadline) {
+    if (await isPortOpen(host, port)) {
+      return
+    }
+
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, backendStartupPollMs))
+  }
+
+  throw new Error(`Backend did not start on ${host}:${port} within ${timeoutMs}ms`)
+}
+
 function ensureBackendRunning(): PluginOption {
   let backendProcess: ChildProcess | null = null
   let startupCheck: Promise<void> | null = null
@@ -31,7 +47,7 @@ function ensureBackendRunning(): PluginOption {
   return {
     name: 'ensure-backend-running',
     apply: 'serve',
-    configureServer(server) {
+    async configureServer(server) {
       if (process.env.SKIP_VITE_BACKEND_AUTOSTART === '1') {
         return
       }
@@ -76,7 +92,15 @@ function ensureBackendRunning(): PluginOption {
           }
           backendProcess = null
         })
+
+        backendProcess.once('error', (error) => {
+          server.config.logger.error(`Backend process failed to start: ${error.message}`)
+        })
+
+        await waitForPortOpen(backendHost, backendPort, backendStartupTimeoutMs)
       })()
+
+      await startupCheck
     },
   }
 }

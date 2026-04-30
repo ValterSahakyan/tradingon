@@ -8,6 +8,7 @@ import { RiskModule } from '../risk/risk.module';
 import { LoggingModule } from '../logging/logging.module';
 import { ExecutionModule } from '../execution/execution.module';
 import { DashboardModule } from '../dashboard/dashboard.module';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { DashboardModule } from '../dashboard/dashboard.module';
     LoggingModule,
     ExecutionModule,
     DashboardModule,
+    AuthModule,
   ],
   controllers: [BotController],
   providers: [BotService],
