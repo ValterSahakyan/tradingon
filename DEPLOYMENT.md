@@ -73,7 +73,7 @@ The deploy workflow syncs the repository to the server and runs [scripts/deploy-
 
 - CI runs on pull requests and pushes to `main`.
 - CD runs on pushes to `main` and on manual dispatch.
-- The app is exposed only on `127.0.0.1:3000`; Nginx is the public entrypoint.
+- The app is exposed only on `127.0.0.1:3002`; Nginx is the public entrypoint.
 - Health is checked at `http://127.0.0.1:3000/api/health` during deploy.
 
 ## 6. Manual recovery commands
@@ -84,5 +84,5 @@ From `/opt/tradingon` on the server:
 docker compose -f docker-compose.prod.yml up -d --build
 docker compose -f docker-compose.prod.yml logs -f app
 docker compose -f docker-compose.prod.yml ps
-curl http://127.0.0.1:3000/api/health
+curl http://127.0.0.1:3002/api/health
 ```
