@@ -21,9 +21,10 @@ export default function ConfigPanel({ sections, onSave, onReload }: Props) {
     const values: Record<string, unknown> = {}
     if (!formRef.current) return values
     // Query all inputs, even those hidden via CSS
-    const els = formRef.current.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-config-key]')
+    const els = formRef.current.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>('[data-config-key]')
     els.forEach(el => {
-      if ((el as HTMLInputElement).readOnly || (el as HTMLSelectElement).disabled) return
+      if ('readOnly' in el && el.readOnly) return
+      if ('disabled' in el && el.disabled) return
       values[el.dataset.configKey!] = el.value
     })
     return values
@@ -98,6 +99,27 @@ function ConfigFieldWidget({ field }: { field: ConfigField }) {
           <option value="false">false</option>
         </select>
         <small>{help}</small>
+      </label>
+    )
+  }
+
+  if (field.type === 'json') {
+    const displayValue =
+      typeof field.rawValue === 'string'
+        ? field.rawValue
+        : JSON.stringify(field.rawValue ?? null)
+
+    return (
+      <label className="config-field">
+        <strong>{field.label}</strong>
+        <textarea
+          data-config-key={field.key}
+          defaultValue={displayValue}
+          placeholder={field.value ? String(field.value) : undefined}
+          readOnly={!field.editable}
+          rows={3}
+        />
+        <small>{help || 'Enter valid JSON'}</small>
       </label>
     )
   }

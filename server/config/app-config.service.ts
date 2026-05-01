@@ -188,7 +188,15 @@ export class AppConfigService implements OnModuleInit {
     }
 
     if (field.type === 'json') {
-      return JSON.stringify(rawValue);
+      if (typeof rawValue !== 'string') {
+        return JSON.stringify(rawValue);
+      }
+
+      try {
+        return JSON.stringify(JSON.parse(rawValue));
+      } catch {
+        throw new BadRequestException(`Invalid JSON for ${field.key}`);
+      }
     }
 
     if (typeof rawValue !== 'string') {

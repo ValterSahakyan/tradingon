@@ -130,7 +130,7 @@ export interface AuthSession {
 export interface ConfigField {
   key: string
   label: string
-  type: 'string' | 'number' | 'boolean'
+  type: 'string' | 'number' | 'boolean' | 'json'
   value: unknown
   rawValue: unknown
   editable: boolean

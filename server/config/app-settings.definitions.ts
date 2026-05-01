@@ -22,7 +22,7 @@ export const APP_SETTING_FIELDS: SettingField[] = [
     type: 'number',
     label: 'API Port',
     section: 'System',
-    editable: true,
+    editable: false,
     help: 'HTTP port used by the Nest backend.',
   }),
   field({
@@ -61,19 +61,8 @@ export const APP_SETTING_FIELDS: SettingField[] = [
     type: 'string',
     label: 'Dashboard Allowed Wallet',
     section: 'System',
-    editable: true,
+    editable: false,
     help: 'Only this wallet address can sign in to the dashboard.',
-  }),
-  field({
-    key: 'dashboardAuthSecret',
-    env: 'DASHBOARD_AUTH_SECRET',
-    path: 'auth.sessionSecret',
-    type: 'string',
-    label: 'Dashboard Auth Secret',
-    section: 'System',
-    editable: true,
-    secret: true,
-    help: 'Session signing secret for dashboard auth cookies.',
   }),
   field({
     key: 'dashboardSessionTtlHours',
@@ -82,7 +71,7 @@ export const APP_SETTING_FIELDS: SettingField[] = [
     type: 'number',
     label: 'Dashboard Session TTL Hours',
     section: 'System',
-    editable: true,
+    editable: false,
   }),
   field({
     key: 'liveTradingEnabled',

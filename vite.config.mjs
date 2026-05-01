@@ -10,6 +10,7 @@ const backendPort = Number(process.env.PORT || 3000)
 
 export default defineConfig({
   plugins: [react()],
+  publicDir: false,
   build: {
     outDir: 'public',
     emptyOutDir: true,
