@@ -92,6 +92,9 @@ export interface PnlPoint {
 }
 
 export interface DashboardData {
+  meta?: {
+    version: string
+  }
   status: BotStatus
   positions: Position[]
   signals: Signal[]

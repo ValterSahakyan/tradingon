@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { AppConfigService } from '../config/app-config.service';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
 import { MarketDataService } from '../market-data/market-data.service';
 import { PositionManagerService } from '../position-manager/position-manager.service';
 import { RiskService } from '../risk/risk.service';
@@ -10,6 +12,7 @@ import { ExecutionService } from '../execution/execution.service';
 import { TradeLog } from '../logging/entities/trade-log.entity';
 import { TradeSignal } from '../common/types';
 import { SettingField } from '../config/app-settings.definitions';
+import { repoRoot } from '../config/paths';
 import { SignalService } from '../signal/signal.service';
 
 @Injectable()
@@ -18,6 +21,7 @@ export class DashboardService {
   private accountValue: number | null = null;
   private accountValueAt: number | null = null;
   private readonly balanceRequestTimeoutMs = 30000;
+  private readonly appVersion = this.readAppVersion();
 
   constructor(
     private readonly config: AppConfigService,
@@ -226,6 +230,9 @@ export class DashboardService {
     ]);
 
     return {
+      meta: {
+        version: this.appVersion,
+      },
       status: this.getStatus(),
       positions: this.getPositions(),
       signals: this.getRecentSignals(),
@@ -296,6 +303,17 @@ export class DashboardService {
       if (timeoutHandle) {
         clearTimeout(timeoutHandle);
       }
+    }
+  }
+
+  private readAppVersion(): string {
+    try {
+      const packageJsonPath = resolve(repoRoot, 'package.json');
+      const raw = readFileSync(packageJsonPath, 'utf8');
+      const parsed = JSON.parse(raw) as { version?: string };
+      return parsed.version?.trim() || '0.0.0';
+    } catch {
+      return '0.0.0';
     }
   }
 }

@@ -211,6 +211,32 @@ code {
   margin-bottom: 16px;
 }
 
+.hero-topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.hero-topline .kicker {
+  margin-bottom: 0;
+}
+
+.version-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  background: rgba(99, 102, 241, 0.12);
+  color: #c7d2fe;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .hero h1 {
   font-size: clamp(36px, 4.5vw, 56px);
   font-weight: 800;
@@ -801,7 +827,22 @@ input, select {
   transition: all 0.2s ease;
 }
 
-input:focus, select:focus {
+textarea {
+  width: 100%;
+  margin-top: 8px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.3);
+  color: var(--text);
+  padding: 10px 14px;
+  font-size: 14px;
+  font-family: var(--mono);
+  transition: all 0.2s ease;
+  resize: vertical;
+  min-height: 88px;
+}
+
+input:focus, select:focus, textarea:focus {
   outline: none;
   border-color: var(--accent);
   background: rgba(0, 0, 0, 0.5);

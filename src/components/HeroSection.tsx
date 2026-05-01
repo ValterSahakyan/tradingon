@@ -17,6 +17,7 @@ interface Props {
 export default function HeroSection({ dashboard, runtime, balance, busy, voiceEnabled, lastEvent, onVoiceToggle, onScan, onPause, onResume }: Props) {
   const status = dashboard?.status
   const stats = dashboard?.stats
+  const appVersion = dashboard?.meta?.version ?? '-'
 
   const pnlNum = Number(stats?.todayPnl ?? 0)
   const pnlColor = pnlNum >= 0 ? 'var(--good)' : 'var(--bad)'
@@ -41,7 +42,10 @@ export default function HeroSection({ dashboard, runtime, balance, busy, voiceEn
   return (
     <section className="hero">
       <div className="hero-card">
-        <div className="kicker">Trading Operations</div>
+        <div className="hero-topline">
+          <div className="kicker">Trading Operations</div>
+          <div className="version-chip">v{appVersion}</div>
+        </div>
         <h1>TradingOn Bot Console</h1>
         <p>Live bot state, open positions, signals, trade performance, and strategy settings.</p>
 
