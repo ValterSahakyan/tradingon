@@ -4,9 +4,18 @@ import { timeAgo, PATTERN_NAMES } from '../utils'
 interface Props {
   signals: Signal[]
   watchlist: WatchCandidate[]
+  latestSignalsFound: number
+  latestCandidatesFound: number
+  lastScanAt?: number
 }
 
-export default function SignalsPanel({ signals, watchlist }: Props) {
+export default function SignalsPanel({
+  signals,
+  watchlist,
+  latestSignalsFound,
+  latestCandidatesFound,
+  lastScanAt,
+}: Props) {
   const tradable = watchlist.filter(item => item.tradable)
   const developing = watchlist.filter(item => !item.tradable)
 
@@ -14,10 +23,18 @@ export default function SignalsPanel({ signals, watchlist }: Props) {
     <div className="panel">
       <div className="panel-head">
         <div className="panel-title">Signals</div>
-        <div className="mini">{signals.length} confirmed | {watchlist.length} watched</div>
+        <div className="mini">
+          Latest scan: {latestSignalsFound} confirmed | {latestCandidatesFound} watched
+        </div>
       </div>
 
       <div className="signals">
+        <div className="mini" style={{ marginBottom: 8 }}>
+          {lastScanAt
+            ? `Last scan ${timeAgo(lastScanAt)}. Cards below are recent confirmed history, not guaranteed live entries.`
+            : 'Cards below are recent confirmed history, not guaranteed live entries.'}
+        </div>
+
         {signals.length === 0 ? (
           <div className="empty-state">
             <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -25,15 +42,18 @@ export default function SignalsPanel({ signals, watchlist }: Props) {
               <line x1="12" y1="8" x2="12" y2="12"/>
               <line x1="12" y1="16" x2="12.01" y2="16"/>
             </svg>
-            <p>No confirmed signals yet</p>
+            <p>No recent confirmed signals saved</p>
           </div>
         ) : (
-          signals.map((sig, i) => <SignalCard key={`${sig.token}-${i}`} sig={sig} />)
+          <>
+            <div className="panel-title" style={{ marginTop: 4 }}>Recent Confirmed History</div>
+            {signals.map((sig, i) => <SignalCard key={`${sig.token}-${i}`} sig={sig} />)}
+          </>
         )}
 
         {tradable.length > 0 && (
           <>
-            <div className="panel-title" style={{ marginTop: 12 }}>Tradeable Watchlist</div>
+            <div className="panel-title" style={{ marginTop: 12 }}>Tradable In Current Scan</div>
             {tradable.map((item, i) => <CandidateCard key={`${item.token}-tradable-${i}`} item={item} />)}
           </>
         )}

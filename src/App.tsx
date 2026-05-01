@@ -326,6 +326,9 @@ export default function App() {
           <SignalsPanel
             signals={dashboard?.signals ?? []}
             watchlist={dashboard?.watchlist ?? []}
+            latestSignalsFound={dashboard?.status.scanDiagnostics?.signalsFound ?? 0}
+            latestCandidatesFound={dashboard?.status.scanDiagnostics?.candidatesFound ?? 0}
+            lastScanAt={runtime?.lastScanAt}
           />
           <ConfigPanel
             sections={config}
