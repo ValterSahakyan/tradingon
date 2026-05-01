@@ -85,9 +85,11 @@ export default function App() {
   const loadDashboard = useCallback(async () => {
     void fetchBalance()
       .then((value) => {
+        console.log('[balance] fetched:', value)
         setBalance(value)
       })
       .catch((err) => {
+        console.error('[balance] fetch failed:', err)
         showFlash(`Balance load failed: ${(err as Error).message}`, 'bad')
       })
 

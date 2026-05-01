@@ -1,10 +1,11 @@
-import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Logger, Post, UseGuards } from '@nestjs/common';
 import { DashboardService } from './dashboard.service';
 import { WalletSessionGuard } from '../auth/wallet-session.guard';
 
 @Controller('api/dashboard')
 @UseGuards(WalletSessionGuard)
 export class DashboardController {
+  private readonly logger = new Logger(DashboardController.name);
   constructor(private readonly dashboard: DashboardService) {}
 
   @Get('status')
@@ -49,7 +50,15 @@ export class DashboardController {
 
   @Get('balance')
   async getBalance() {
-    return this.dashboard.getBalance();
+    this.logger.log('GET /api/dashboard/balance called');
+    try {
+      const result = await this.dashboard.getBalance();
+      this.logger.log(`GET /api/dashboard/balance returning: ${JSON.stringify(result)}`);
+      return result;
+    } catch (err) {
+      this.logger.error(`GET /api/dashboard/balance threw: ${err.message}`);
+      throw err;
+    }
   }
 
   @Get('all')

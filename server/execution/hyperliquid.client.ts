@@ -35,6 +35,7 @@ export class HyperliquidClient implements OnModuleInit {
   private wallet: ethers.Wallet | null = null;
   private accountAddress: string | null = null;
   private accountAbstraction: string | null = null;
+  private accountAbstractionChecked = false;
   private assets = new Map<string, AssetMeta>();
   private assetsLoading: Promise<void> | null = null;
   private closingInFlight = new Set<string>();
@@ -188,6 +189,12 @@ export class HyperliquidClient implements OnModuleInit {
     if (!this.wallet) {
       this.logger.warn('getAccountValue: wallet is null — HYPERLIQUID_PRIVATE_KEY not loaded');
       return null;
+    }
+
+    const cacheAge = Date.now() - this.cachedAccountValueAt;
+    if (this.cachedAccountValue !== null && cacheAge < 20_000) {
+      this.logger.log(`getAccountValue: returning fresh cache $${this.cachedAccountValue.toFixed(2)} (${Math.round(cacheAge / 1000)}s old)`);
+      return this.cachedAccountValue;
     }
 
     const queryAddress = this.accountAddress ?? this.wallet.address;
@@ -540,9 +547,10 @@ export class HyperliquidClient implements OnModuleInit {
   }
 
   private async ensureAccountAbstraction(): Promise<void> {
-    if (this.accountAbstraction || !this.http || !this.wallet) {
+    if (this.accountAbstractionChecked || !this.http || !this.wallet) {
       return;
     }
+    this.accountAbstractionChecked = true;
 
     try {
       const res = await this.http.post('/info', {
