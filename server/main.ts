@@ -1,6 +1,5 @@
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { ConfigService } from '@nestjs/config';
 import { config as loadDotenv } from 'dotenv';
 import { AppModule } from './app.module';
 import { AppConfigService } from './config/app-config.service';
@@ -27,14 +26,13 @@ async function bootstrap() {
   }
 
   app.enableShutdownHooks();
-  const configService = app.get(ConfigService);
-  const port = configService.get<number>('server.port') || 3000;
+  const appConfig = app.get(AppConfigService);
+  await appConfig.waitUntilReady();
+
+  const port = appConfig.get<number>('server.port') || 3000;
   logger.log(`Starting HTTP listener on port ${port}`);
   await app.listen(port, '0.0.0.0');
   logger.log(`HTTP listener bound on port ${port}`);
-
-  const appConfig = app.get(AppConfigService);
-  await appConfig.waitUntilReady();
 
   logger.log(`Trading bot running on port ${port}`);
   logger.log(`Mode: ${appConfig.get<boolean>('hyperliquid.testnet') ? 'TESTNET' : 'MAINNET'}`);
