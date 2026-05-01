@@ -3,14 +3,14 @@ import type { DashboardData } from '../types'
 
 function formatExitReason(reason: string): string {
   switch (reason) {
-    case 'stop_loss':      return 'Stop loss'
-    case 'time_stop':      return 'Time limit'
+    case 'stop_loss': return 'Stop loss'
+    case 'time_stop': return 'Time limit'
     case 'volatility_stop': return 'Volatility stop'
-    case 'emergency':      return 'Emergency close'
-    case 'TP1':            return 'Take profit 1'
-    case 'TP2':            return 'Take profit 2'
-    case 'TP3':            return 'Take profit 3'
-    default:               return reason.replace(/_/g, ' ')
+    case 'emergency': return 'Emergency close'
+    case 'TP1': return 'Take profit 1'
+    case 'TP2': return 'Take profit 2'
+    case 'TP3': return 'Take profit 3'
+    default: return reason.replace(/_/g, ' ')
   }
 }
 
@@ -25,31 +25,32 @@ function speak(text: string) {
 }
 
 export function useVoiceNotifications(dashboard: DashboardData | null, enabled: boolean) {
-  const prevTokens   = useRef<Set<string>>(new Set())
+  const prevTokens = useRef<Set<string>>(new Set())
   const seenTradeIds = useRef<Set<string>>(new Set())
-  const initialized  = useRef(false)
+  const initialized = useRef(false)
   const [lastEvent, setLastEvent] = useState<string | null>(null)
 
   useEffect(() => {
     if (!dashboard) return
 
-    const currentTokens = new Set(dashboard.positions.map(p => p.token))
+    const currentTokens = new Set(dashboard.positions.map((position) => position.token))
 
     if (!initialized.current) {
       prevTokens.current = currentTokens
-      dashboard.trades.forEach(t => seenTradeIds.current.add(t.id))
+      dashboard.trades.forEach((trade) => seenTradeIds.current.add(trade.id))
       initialized.current = true
       return
     }
 
-    // Always update baseline so unmuting never floods old events
     const newOpens: string[] = []
     const newCloses: string[] = []
 
     for (const token of currentTokens) {
       if (!prevTokens.current.has(token)) {
-        const pos = dashboard.positions.find(p => p.token === token)
-        if (pos) newOpens.push(`${pos.direction.toUpperCase()} ${token} opened (score ${pos.score})`)
+        const position = dashboard.positions.find((item) => item.token === token)
+        if (position) {
+          newOpens.push(`${position.direction.toUpperCase()} ${token} opened (score ${position.score})`)
+        }
       }
     }
 
@@ -58,11 +59,9 @@ export function useVoiceNotifications(dashboard: DashboardData | null, enabled: 
       seenTradeIds.current.add(trade.id)
       if (!trade.exitReason) continue
 
-      const pnl = trade.pnlUsd
-      const pnlText = pnl >= 0
-        ? `+$${pnl.toFixed(2)}`
-        : `-$${Math.abs(pnl).toFixed(2)}`
-      newCloses.push(`${trade.token} closed — ${formatExitReason(trade.exitReason)} ${pnlText}`)
+      const pnl = Number(trade.pnlUsd ?? 0)
+      const pnlText = pnl >= 0 ? `+$${pnl.toFixed(2)}` : `-$${Math.abs(pnl).toFixed(2)}`
+      newCloses.push(`${trade.token} closed - ${formatExitReason(trade.exitReason)} ${pnlText}`)
     }
 
     prevTokens.current = currentTokens
@@ -72,12 +71,12 @@ export function useVoiceNotifications(dashboard: DashboardData | null, enabled: 
 
     if (!enabled) return
 
-    for (const msg of newOpens) {
-      const parts = msg.split(' opened')
+    for (const message of newOpens) {
+      const parts = message.split(' opened')
       speak(`${parts[0]} opened.`)
     }
-    for (const trade of newCloses) {
-      speak(trade.replace('—', '.').replace(/\+|\-/, (m) => m === '+' ? 'profit ' : 'loss ').replace('$', '').replace(/(\d+\.\d+)/, '$1 dollars'))
+    for (const message of newCloses) {
+      speak(message.replace(' - ', '. ').replace(/\+|\-/, (match) => (match === '+' ? 'profit ' : 'loss ')).replace('$', '').replace(/(\d+\.\d+)/, '$1 dollars'))
     }
   }, [dashboard, enabled])
 

@@ -4,7 +4,7 @@ import { formatUsd, formatPct, formatTime, timeAgo, statePillClass } from '../ut
 interface Props {
   dashboard: DashboardData | null
   runtime: RuntimeInfo | null
-  balance: { perpBalance: number | null; spotBalance: number | null; updatedAt: number | null } | null
+  balance: { perpBalance: number | null; spotBalance: number | null; updatedAt: number | null; needsAccountAddress: boolean } | null
   busy: boolean
   voiceEnabled: boolean
   lastEvent: string | null
@@ -20,6 +20,22 @@ export default function HeroSection({ dashboard, runtime, balance, busy, voiceEn
 
   const pnlNum = Number(stats?.todayPnl ?? 0)
   const pnlColor = pnlNum >= 0 ? 'var(--good)' : 'var(--bad)'
+  const balanceColor =
+    balance?.perpBalance != null && balance.perpBalance > 0
+      ? 'var(--good)'
+      : balance?.spotBalance != null && balance.spotBalance > 0
+        ? 'var(--warn)'
+        : undefined
+  const balanceSubtext =
+    balance == null
+      ? 'Loading...'
+      : balance.needsAccountAddress
+        ? 'Set Main Account Address in Config → Exchange'
+        : balance.spotBalance != null && balance.spotBalance > 0 && (balance.perpBalance == null || balance.perpBalance === 0)
+          ? `Spot: $${Number(balance.spotBalance).toFixed(2)} - transfer to perp account`
+          : balance.updatedAt
+            ? `Updated ${timeAgo(balance.updatedAt)}`
+            : 'Unavailable - check Hyperliquid private key and account address'
 
   return (
     <section className="hero">
@@ -65,14 +81,10 @@ export default function HeroSection({ dashboard, runtime, balance, busy, voiceEn
 
           <div className="metric">
             <div className="metric-label">Balance</div>
-            <div className="metric-value mono" style={{ color: (balance?.perpBalance ?? 0) > 0 ? 'var(--good)' : balance?.spotBalance ?? 0 > 0 ? 'var(--warn)' : undefined }}>
+            <div className="metric-value mono" style={{ color: balanceColor }}>
               {balance?.perpBalance != null ? `$${Number(balance.perpBalance).toFixed(2)}` : '-'}
             </div>
-            <div className="metric-sub">
-              {balance?.spotBalance != null && balance.spotBalance > 0
-                ? `Spot: $${Number(balance.spotBalance).toFixed(2)} — transfer to perp`
-                : balance?.updatedAt ? `Updated ${timeAgo(balance.updatedAt)}` : 'Loading...'}
-            </div>
+            <div className="metric-sub">{balanceSubtext}</div>
           </div>
 
           <div className="metric">

@@ -1,9 +1,10 @@
-FROM node:20-alpine AS builder
+FROM node:20-alpine AS deps
 WORKDIR /app
-
 COPY package*.json ./
 RUN npm ci
 
+FROM deps AS builder
+WORKDIR /app
 COPY . .
 RUN npm run build:all
 
@@ -15,12 +16,12 @@ ENV NODE_ENV=production
 COPY package*.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 
-COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/server/dist ./server/dist
 COPY --from=builder /app/public ./public
+COPY --from=builder /app/scripts/entrypoint.sh ./scripts/entrypoint.sh
 
-COPY scripts/entrypoint.sh ./entrypoint.sh
-RUN chmod +x entrypoint.sh
+RUN chmod +x ./scripts/entrypoint.sh
 
-EXPOSE 3002
+EXPOSE 3000
 
-ENTRYPOINT ["./entrypoint.sh"]
+ENTRYPOINT ["./scripts/entrypoint.sh"]

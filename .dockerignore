@@ -1,32 +1,9 @@
-# Dependencies
 node_modules
-core/node_modules
-
-# Build artifacts (rebuilt inside Docker)
-dist
+server/dist
 public
-core/dist
-
-# Git
 .git
-.gitignore
-
-# Environment files (injected at runtime)
+.github
 .env
 .env.local
-.env.*.local
-
-# Dev tooling
-.eslintrc*
-.prettierrc*
+coverage
 *.log
-
-# Docker files themselves
-Dockerfile*
-docker-compose*
-.dockerignore
-
-# Editor
-.vscode
-.idea
-*.swp

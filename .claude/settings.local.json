@@ -1,19 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "Bash(awk -F\"from '\" '{print $2}')",
-      "Bash(python3 \"C:\\\\Users\\\\User\\\\.claude\\\\skills\\\\ui-ux-pro-max\\\\scripts\\\\search.py\" \"crypto trading terminal dashboard dark fintech professional\" --design-system -p \"TradingOn Bot Dashboard\")",
-      "Bash(py \"C:\\\\Users\\\\User\\\\.claude\\\\skills\\\\ui-ux-pro-max\\\\scripts\\\\search.py\" \"crypto trading terminal dashboard dark fintech professional\" --design-system -p \"TradingOn Bot Dashboard\")",
-      "Bash(py \"C:\\\\Users\\\\User\\\\.claude\\\\skills\\\\ui-ux-pro-max\\\\scripts\\\\search.py\" \"real-time data dashboard charts financial\" --domain chart -n 6)",
-      "Bash(docker compose *)",
-      "Bash(docker volume *)",
-      "Bash(docker exec *)",
-      "Bash(netstat -ano)",
-      "Bash(findstr \":5432\\\\|:5433\")",
-      "PowerShell(Get-NetTCPConnection -LocalPort 5432,5433 -ErrorAction SilentlyContinue | Select-Object LocalPort, State, OwningProcess | ForEach-Object { $proc = Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue; [PSCustomObject]@{Port=$_.LocalPort; State=$_.State; PID=$_.OwningProcess; Name=$proc.Name} })",
-      "Bash(npm install *)",
       "Bash(npm run *)",
-      "Bash(python \"C:\\\\Users\\\\User\\\\.claude\\\\skills\\\\ui-ux-pro-max\\\\scripts\\\\search.py\" \"trading bot dashboard fintech dark professional\" --design-system -p \"TradingOn Bot\" -f markdown)"
+      "PowerShell(Get-Process -Name \"node\" -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowTitle -eq \"\" } | Stop-Process -Force -ErrorAction SilentlyContinue; Start-Sleep -Milliseconds 500; Write-Host \"done\")",
+      "PowerShell(Get-Process -Name \"node\" -ErrorAction SilentlyContinue)",
+      "PowerShell(Stop-Process -Force -ErrorAction SilentlyContinue)",
+      "Bash(powershell.exe -Command \"Get-Content 'C:\\\\Users\\\\User\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--work-tradingon\\\\358548b1-79c0-47d1-9067-64c7be0e7ee6\\\\tasks\\\\bo0dryvq5.output' -Wait 2>/dev/null\")"
     ]
   }
 }

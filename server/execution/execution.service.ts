@@ -132,6 +132,14 @@ export class ExecutionService {
     return this.hl.getSpotUsdcBalance();
   }
 
+  getWalletAddress(): string | null {
+    return this.hl.getWalletAddress();
+  }
+
+  getAccountAddress(): string | null {
+    return this.hl.getAccountAddress();
+  }
+
   private calculateSize(notional: number, price: number): number {
     if (price <= 0) return 0;
     // Round down to exchange precision using szDecimals

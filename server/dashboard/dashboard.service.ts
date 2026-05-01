@@ -17,6 +17,7 @@ export class DashboardService {
   private recentSignals: (TradeSignal & { timestamp: number })[] = [];
   private accountValue: number | null = null;
   private accountValueAt: number | null = null;
+  private readonly balanceRequestTimeoutMs = 30000;
 
   constructor(
     private readonly config: AppConfigService,
@@ -35,16 +36,28 @@ export class DashboardService {
     this.accountValueAt = Date.now();
   }
 
-  async getBalance(): Promise<{ perpBalance: number | null; spotBalance: number | null; updatedAt: number | null }> {
+  async getBalance(): Promise<{ perpBalance: number | null; spotBalance: number | null; updatedAt: number | null; needsAccountAddress: boolean }> {
     const [perp, spot] = await Promise.all([
-      this.execution.getAccountValue(),
-      this.execution.getSpotUsdcBalance(),
+      this.withTimeout(this.execution.getAccountValue(), this.balanceRequestTimeoutMs, this.accountValue),
+      this.withTimeout(this.execution.getSpotUsdcBalance(), this.balanceRequestTimeoutMs, null),
     ]);
-    if (perp !== null) {
-      this.accountValue = perp;
+
+    const perpBalance = perp ?? this.accountValue;
+    if (perpBalance !== null) {
+      this.accountValue = perpBalance;
       this.accountValueAt = Date.now();
     }
-    return { perpBalance: perp, spotBalance: spot, updatedAt: Date.now() };
+
+    const walletAddr = this.execution.getWalletAddress();
+    const accountAddr = this.execution.getAccountAddress();
+    const needsAccountAddress = !!walletAddr && walletAddr.toLowerCase() === accountAddr?.toLowerCase();
+
+    return {
+      perpBalance,
+      spotBalance: spot,
+      updatedAt: this.accountValueAt,
+      needsAccountAddress,
+    };
   }
 
   pushSignals(signals: TradeSignal[]) {
@@ -227,6 +240,10 @@ export class DashboardService {
     const grouped = new Map<string, unknown[]>();
 
     for (const field of this.config.getSettingFields()) {
+      if (!field.editable) {
+        continue;
+      }
+
       const currentValue = this.config.get(field.path);
       const item = {
         key: field.key,
@@ -263,5 +280,22 @@ export class DashboardService {
   private toNumber(value: unknown): number {
     const numeric = typeof value === 'number' ? value : Number(value ?? 0);
     return Number.isFinite(numeric) ? numeric : 0;
+  }
+
+  private async withTimeout<T>(promise: Promise<T>, timeoutMs: number, fallback: T): Promise<T> {
+    let timeoutHandle: NodeJS.Timeout | null = null;
+
+    try {
+      return await Promise.race([
+        promise,
+        new Promise<T>((resolve) => {
+          timeoutHandle = setTimeout(() => resolve(fallback), timeoutMs);
+        }),
+      ]);
+    } finally {
+      if (timeoutHandle) {
+        clearTimeout(timeoutHandle);
+      }
+    }
   }
 }

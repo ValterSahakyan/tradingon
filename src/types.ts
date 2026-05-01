@@ -37,9 +37,14 @@ export interface Position {
   currentPrice: number
   stopPrice: number
   tp1Price: number
+  tp2Price: number
   margin: number
   notional: number
+  leverage: number
+  holdMins: number
   timeLeftMins: number
+  tp1Hit: boolean
+  tp2Hit: boolean
   patternsFired: string[]
 }
 
@@ -68,15 +73,21 @@ export interface Trade {
   token: string
   direction: string
   entryPrice: number
-  exitPrice?: number
-  pnlUsd: number
-  exitReason?: string
+  exitPrice?: number | null
+  pnlUsd: number | null
+  pnlPercent?: number | null
+  exitReason?: string | null
   score: number
-  durationMinutes?: number
+  durationMinutes?: number | null
+  patternsFired?: string[]
+  tp1Hit?: boolean
+  tp2Hit?: boolean
+  entryTime?: number
+  exitTime?: number | null
 }
 
 export interface PnlPoint {
-  date: string
+  time: number
   cumPnl: number
 }
 
@@ -93,9 +104,20 @@ export interface DashboardData {
 export interface RuntimeInfo {
   mode: string
   isRunning: boolean
+  initialized: boolean
+  liveTradingEnabled: boolean
   scanIntervalSeconds: number
   lastScanAt?: number
   lastScanResult?: { ok: boolean; message: string }
+  signalDiagnostics?: {
+    tokensSeen: number
+    tokensEvaluated: number
+    tokensWithCandles: number
+    insufficientCandles: number
+    signalsFound: number
+    candidatesFound: number
+    rejectReasons: Record<string, number>
+  }
 }
 
 export interface AuthSession {

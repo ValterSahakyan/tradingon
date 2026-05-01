@@ -11,32 +11,13 @@ export class AuthController {
     return this.auth.getSessionStatus(req);
   }
 
-  @Post('challenge')
-  createChallenge(
-    @Req() req: Request,
-    @Body() body: { address?: string; chainId?: number | null; domain?: string; origin?: string },
-  ) {
-    return this.auth.createChallenge(
-      body.address || '',
-      body.chainId ?? null,
-      body.domain || req.hostname,
-      body.origin || `${req.protocol}://${req.get('host') || req.hostname}`,
-    );
-  }
-
   @Post('verify')
   verify(
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
-    @Body() body: { address?: string; nonce?: string; signature?: string },
+    @Body() body: { address?: string },
   ) {
-    return this.auth.verifyChallenge(
-      req,
-      res,
-      body.address || '',
-      body.nonce || '',
-      body.signature || '',
-    );
+    return this.auth.verify(req, res, body.address || '');
   }
 
   @Post('logout')

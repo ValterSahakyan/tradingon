@@ -4,7 +4,6 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ScheduleModule } from '@nestjs/schedule';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ServeStaticModule } from '@nestjs/serve-static';
-import { join } from 'path';
 
 import configuration from './config/configuration';
 import { AppConfigModule } from './config/app-config.module';
@@ -15,6 +14,7 @@ import { BotModule } from './bot/bot.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { HealthModule } from './health/health.module';
 import { AuthModule } from './auth/auth.module';
+import { envFilePath, publicRootPath } from './config/paths';
 
 @Module({
   imports: [
@@ -22,7 +22,7 @@ import { AuthModule } from './auth/auth.module';
     ConfigModule.forRoot({
       isGlobal: true,
       load: [configuration],
-      envFilePath: '.env',
+      envFilePath,
     }),
     AppConfigModule,
 
@@ -47,7 +47,7 @@ import { AuthModule } from './auth/auth.module';
 
     // Serve dashboard static files
     ServeStaticModule.forRoot({
-      rootPath: join(process.cwd(), 'public'),
+      rootPath: publicRootPath,
       exclude: ['/api/(.*)'],
     }),
 

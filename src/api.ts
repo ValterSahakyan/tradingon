@@ -1,5 +1,11 @@
 import type { DashboardData, RuntimeInfo, ConfigSection, AuthSession } from './types'
 
+const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/+$/, '')
+
+function withApiBase(path: string): string {
+  return API_BASE ? `${API_BASE}${path}` : path
+}
+
 export class ApiError extends Error {
   status: number
 
@@ -10,16 +16,14 @@ export class ApiError extends Error {
 }
 
 async function getJson<T>(url: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(url, {
-    credentials: 'same-origin',
+  const res = await fetch(withApiBase(url), {
+    credentials: 'include',
     ...options,
   })
   if (!res.ok) {
     const text = await res.text()
     let parsed: any
-    try {
-      parsed = JSON.parse(text)
-    } catch {}
+    try { parsed = JSON.parse(text) } catch {}
     const msg = parsed?.message || parsed?.error || text || `HTTP ${res.status}`
     throw new ApiError(res.status, typeof msg === 'string' ? msg : JSON.stringify(msg))
   }
@@ -28,31 +32,22 @@ async function getJson<T>(url: string, options?: RequestInit): Promise<T> {
 
 export const fetchSession = () => getJson<AuthSession>('/api/auth/session')
 
-export const createChallenge = (payload: { address: string; chainId: number | null; domain: string; origin: string }) =>
-  getJson<{ authEnabled: boolean; message: string | null; nonce: string | null; expiresAt: number | null; allowedWallet: string | null }>(
-    '/api/auth/challenge',
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    },
-  )
-
-export const verifyWallet = (payload: { address: string; nonce: string; signature: string }) =>
+export const verifyWallet = (address: string) =>
   getJson<AuthSession>('/api/auth/verify', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ address }),
   })
 
 export const logoutSession = () =>
-  getJson<{ ok: boolean }>('/api/auth/logout', {
-    method: 'POST',
-  })
+  getJson<{ ok: boolean }>('/api/auth/logout', { method: 'POST' })
 
 export const fetchDashboard = () => getJson<DashboardData>('/api/dashboard/all')
 
-export const fetchBalance = () => getJson<{ perpBalance: number | null; spotBalance: number | null; updatedAt: number | null }>('/api/dashboard/balance')
+export const fetchBalance = () =>
+  getJson<{ perpBalance: number | null; spotBalance: number | null; updatedAt: number | null; needsAccountAddress: boolean }>(
+    '/api/dashboard/balance',
+  )
 
 export const fetchRuntime = () => getJson<RuntimeInfo>('/api/bot/runtime')
 

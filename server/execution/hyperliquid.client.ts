@@ -44,7 +44,7 @@ export class HyperliquidClient implements OnModuleInit {
   constructor(private readonly config: AppConfigService) {}
 
   async onModuleInit() {
-    await this.ensureConfigured();
+    void this.ensureConfigured();
   }
 
   async placeMarketOrder(
@@ -190,22 +190,29 @@ export class HyperliquidClient implements OnModuleInit {
       return null;
     }
 
+    const queryAddress = this.accountAddress ?? this.wallet.address;
+    this.logger.log(`getAccountValue: querying address=${queryAddress} walletAddress=${this.wallet.address} accountAddress=${this.accountAddress ?? 'null'} accountAbstraction=${this.accountAbstraction ?? 'not-yet-fetched'}`);
+
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
         await this.ensureAccountAbstraction();
+        this.logger.log(`getAccountValue attempt ${attempt}: accountAbstraction=${this.accountAbstraction ?? 'none'} usesUnified=${this.usesUnifiedCollateral()}`);
+
         const [perpRes, spotRes] = await Promise.all([
-          http.post('/info', { type: 'clearinghouseState', user: this.accountAddress ?? this.wallet.address }),
-          http.post('/info', { type: 'spotClearinghouseState', user: this.accountAddress ?? this.wallet.address }),
+          http.post('/info', { type: 'clearinghouseState', user: queryAddress }),
+          http.post('/info', { type: 'spotClearinghouseState', user: queryAddress }),
         ]);
 
         this.logger.log(`RAW clearinghouseState: ${JSON.stringify(perpRes.data)}`);
+        this.logger.log(`RAW spotClearinghouseState: ${JSON.stringify(spotRes.data)}`);
 
         const perpValue = parseFloat(perpRes.data?.marginSummary?.accountValue ?? '0');
         const spotBalances: any[] = spotRes.data?.balances ?? [];
         const spotUsdc = spotBalances.find((b: any) => b.coin === 'USDC');
         const spotTotal = parseFloat(spotUsdc?.total ?? '0');
 
-        this.logger.log(`Balance — perp: $${perpValue.toFixed(2)}, spot USDC: $${spotTotal.toFixed(2)}`);
+        this.logger.log(`Balance — perp: $${perpValue.toFixed(2)}, spot USDC: $${spotTotal.toFixed(2)} | marginSummary.accountValue="${perpRes.data?.marginSummary?.accountValue ?? 'missing'}" spotUsdc.total="${spotUsdc?.total ?? 'missing'}"`);
+        this.logger.log(`getAccountValue: usesUnifiedCollateral=${this.usesUnifiedCollateral()} — will return ${this.usesUnifiedCollateral() ? `spotTotal=$${spotTotal}` : `perpValue=$${perpValue}`}`);
 
         if (this.usesUnifiedCollateral()) {
           const value = spotTotal;
@@ -217,7 +224,12 @@ export class HyperliquidClient implements OnModuleInit {
           return null;
         }
 
-        if (perpValue === 0 && spotTotal > 0) {
+        if (perpValue === 0 && spotTotal === 0) {
+          this.logger.warn(
+            `Account ${this.accountAddress} has $0 in both perp and spot. ` +
+            `If this is an API wallet, set HYPERLIQUID_ACCOUNT_ADDRESS to your main wallet address in the Config Panel.`,
+          );
+        } else if (perpValue === 0 && spotTotal > 0) {
           this.logger.warn(`Your $${spotTotal.toFixed(2)} USDC is in the spot wallet. Transfer it to the perp account on app.hyperliquid.xyz to enable trading.`);
         }
 
@@ -251,14 +263,24 @@ export class HyperliquidClient implements OnModuleInit {
 
   async getSpotUsdcBalance(): Promise<number | null> {
     const http = await this.getHttp();
-    if (!http || !this.wallet) return null;
+    if (!http) {
+      this.logger.warn('getSpotUsdcBalance: HTTP client not ready');
+      return null;
+    }
+    if (!this.wallet) {
+      this.logger.warn('getSpotUsdcBalance: wallet not loaded');
+      return null;
+    }
+    const queryAddress = this.accountAddress ?? this.wallet.address;
     try {
-      const res = await http.post('/info', { type: 'spotClearinghouseState', user: this.accountAddress ?? this.wallet.address });
+      const res = await http.post('/info', { type: 'spotClearinghouseState', user: queryAddress });
       const balances: any[] = res.data?.balances ?? [];
       const usdc = balances.find((b: any) => b.coin === 'USDC');
       const total = parseFloat(usdc?.total ?? '0');
+      this.logger.log(`getSpotUsdcBalance: address=${queryAddress} USDC.total="${usdc?.total ?? 'missing'}" parsed=${total}`);
       return Number.isFinite(total) ? total : null;
-    } catch {
+    } catch (err) {
+      this.logger.warn(`getSpotUsdcBalance failed: ${err.message}`);
       return null;
     }
   }
@@ -432,6 +454,7 @@ export class HyperliquidClient implements OnModuleInit {
         return;
       }
       this.isMainnet = !this.config.get<boolean>('hyperliquid.testnet');
+      this.logger.log(`HyperliquidClient: initialising HTTP client → baseURL=${apiUrl} mainnet=${this.isMainnet}`);
       this.http = axios.create({ baseURL: apiUrl, timeout: 15_000 });
       this.httpReady = true;
     }
@@ -441,15 +464,25 @@ export class HyperliquidClient implements OnModuleInit {
     if (!this.wallet) {
       const pk = this.config.get<string>('hyperliquid.privateKey');
       if (!pk) {
-        return; // key not configured yet — try again next call
+        this.logger.warn('HYPERLIQUID_PRIVATE_KEY not found in DB or env — set it in the Config panel');
+        return;
       }
       try {
-        this.wallet = new ethers.Wallet(pk);
-        const mainAddr = this.config.get<string>('hyperliquid.accountAddress');
-        this.accountAddress = (mainAddr || this.wallet.address).toLowerCase();
+        this.wallet = new ethers.Wallet(pk.trim());
+        const manualAddr = this.config.get<string>('hyperliquid.accountAddress');
+        const manualLower = manualAddr?.toLowerCase();
+        const walletLower = this.wallet.address.toLowerCase();
+        if (manualLower && manualLower !== walletLower) {
+          // Explicit override that differs from the signing wallet — use it directly
+          this.accountAddress = manualLower;
+        } else {
+          // No override, or it was accidentally set to the API wallet address —
+          // auto-discover the master account this API wallet belongs to
+          this.accountAddress = await this.discoverMasterAccount(this.wallet.address);
+        }
         this.logger.log(`Wallet ready: ${this.wallet.address} | Account: ${this.accountAddress} | Network: ${this.isMainnet ? 'MAINNET' : 'testnet'}`);
-      } catch {
-        this.logger.error('HYPERLIQUID_PRIVATE_KEY is invalid — must be a 0x-prefixed 64-char hex private key. Update it in the Config panel.');
+      } catch (err) {
+        this.logger.error(`HYPERLIQUID_PRIVATE_KEY is invalid (${err.message}) — must be a 0x-prefixed 64-char hex private key. Update it in the Config panel.`);
         return;
       }
     }
@@ -465,6 +498,47 @@ export class HyperliquidClient implements OnModuleInit {
     }
   }
 
+  private async discoverMasterAccount(agentAddress: string): Promise<string> {
+    if (!this.http) return agentAddress.toLowerCase();
+
+    // Try to find the master account this API wallet belongs to.
+    // Hyperliquid stores the agent→master mapping; we try a few known endpoint shapes.
+    const candidates: Array<() => Promise<string | null>> = [
+      async () => {
+        const res = await this.http!.post('/info', { type: 'agentAddress', user: agentAddress });
+        this.logger.log(`agentAddress raw: ${JSON.stringify(res.data)}`);
+        const addr = typeof res.data === 'string' ? res.data.trim()
+          : (res.data?.master ?? res.data?.address ?? null);
+        return typeof addr === 'string' && /^0x[a-fA-F0-9]{40}$/i.test(addr) ? addr : null;
+      },
+      async () => {
+        const res = await this.http!.post('/info', { type: 'masterAddress', user: agentAddress });
+        this.logger.log(`masterAddress raw: ${JSON.stringify(res.data)}`);
+        const addr = typeof res.data === 'string' ? res.data.trim()
+          : (res.data?.master ?? res.data?.address ?? null);
+        return typeof addr === 'string' && /^0x[a-fA-F0-9]{40}$/i.test(addr) ? addr : null;
+      },
+    ];
+
+    for (const attempt of candidates) {
+      try {
+        const master = await attempt();
+        if (master && master.toLowerCase() !== agentAddress.toLowerCase()) {
+          this.logger.log(`Auto-discovered master account: ${master}`);
+          return master.toLowerCase();
+        }
+      } catch {
+        // try next
+      }
+    }
+
+    this.logger.warn(
+      `API wallet ${agentAddress} has no balance — balance lives on your main account. ` +
+      `Set HYPERLIQUID_ACCOUNT_ADDRESS to your main wallet address in the Config Panel.`,
+    );
+    return agentAddress.toLowerCase();
+  }
+
   private async ensureAccountAbstraction(): Promise<void> {
     if (this.accountAbstraction || !this.http || !this.wallet) {
       return;
@@ -475,11 +549,15 @@ export class HyperliquidClient implements OnModuleInit {
         type: 'userAbstraction',
         user: this.accountAddress ?? this.wallet.address,
       });
-      const abstraction = typeof res.data === 'string' ? res.data : null;
-      this.accountAbstraction = abstraction;
-      if (abstraction) {
-        this.logger.log(`Account abstraction: ${abstraction}`);
+      this.logger.log(`userAbstraction raw response: ${JSON.stringify(res.data)}`);
+      let abstraction: string | null = null;
+      if (typeof res.data === 'string') {
+        abstraction = res.data;
+      } else if (res.data && typeof res.data === 'object') {
+        abstraction = res.data.type ?? res.data.abstraction ?? null;
       }
+      this.accountAbstraction = abstraction;
+      this.logger.log(`Account abstraction: ${abstraction ?? 'none (standard account)'}`);
     } catch (err) {
       this.logger.warn(`userAbstraction lookup failed: ${err.message}`);
     }

@@ -1,6 +1,10 @@
 import { useState, useEffect, useCallback } from 'react'
 import type { DashboardData, RuntimeInfo, ConfigSection, AuthSession } from './types'
-import { ApiError, fetchDashboard, fetchRuntime, fetchConfig, saveConfig, botAction, fetchBalance, fetchSession, createChallenge, verifyWallet, logoutSession } from './api'
+import {
+  ApiError,
+  fetchDashboard, fetchRuntime, fetchConfig, saveConfig, botAction, fetchBalance,
+  fetchSession, verifyWallet, logoutSession,
+} from './api'
 import Flash, { type FlashState } from './components/Flash'
 import HeroSection from './components/HeroSection'
 import PositionsPanel from './components/PositionsPanel'
@@ -11,27 +15,37 @@ import ConfigPanel from './components/ConfigPanel'
 import { useVoiceNotifications } from './hooks/useVoiceNotifications'
 import AuthScreen from './components/AuthScreen'
 
-const INITIAL_LOAD_RETRIES = 30
-const INITIAL_LOAD_DELAY_MS = 1500
-
-type AuthState = 'checking' | 'anonymous' | 'authenticated'
-
 type BrowserEthereum = {
+  isMetaMask?: boolean
+  providers?: BrowserEthereum[]
   request: (args: { method: string; params?: unknown[] | object }) => Promise<unknown>
 }
 
+function getMetaMaskProvider(): BrowserEthereum | null {
+  const win = window as Window & { ethereum?: BrowserEthereum }
+  const eth = win.ethereum
+  if (!eth) return null
+  if (eth.providers?.length) {
+    return eth.providers.find((provider) => provider.isMetaMask) ?? null
+  }
+  return eth.isMetaMask ? eth : null
+}
+
 export default function App() {
+  const [authed, setAuthed] = useState(false)
+  const [session, setSession] = useState<AuthSession | null>(null)
+  const [sessionChecked, setSessionChecked] = useState(false)
+  const [connectedAddress, setConnectedAddress] = useState<string | null>(null)
+  const [authBusy, setAuthBusy] = useState(false)
+  const [authError, setAuthError] = useState<string | null>(null)
+
   const [dashboard, setDashboard] = useState<DashboardData | null>(null)
   const [runtime, setRuntime] = useState<RuntimeInfo | null>(null)
-  const [balance, setBalance] = useState<{ perpBalance: number | null; spotBalance: number | null; updatedAt: number | null } | null>(null)
+  const [balance, setBalance] = useState<{ perpBalance: number | null; spotBalance: number | null; updatedAt: number | null; needsAccountAddress: boolean } | null>(null)
   const [config, setConfig] = useState<ConfigSection[]>([])
   const [flash, setFlash] = useState<FlashState | null>(null)
   const [busy, setBusy] = useState(false)
   const [voiceEnabled, setVoiceEnabled] = useState(false)
-  const [authSession, setAuthSession] = useState<AuthSession | null>(null)
-  const [authState, setAuthState] = useState<AuthState>('checking')
-  const [authBusy, setAuthBusy] = useState(false)
-  const [authError, setAuthError] = useState<string | null>(null)
 
   const { lastEvent } = useVoiceNotifications(dashboard, voiceEnabled)
 
@@ -39,152 +53,174 @@ export default function App() {
     setFlash({ message, kind, id: Date.now() })
   }, [])
 
-  const loadDashboard = useCallback(async () => {
-    const [dash, rt, bal] = await Promise.all([fetchDashboard(), fetchRuntime(), fetchBalance()])
-    setDashboard(dash)
-    setRuntime(rt)
-    setBalance(bal)
+  const applySession = useCallback((nextSession: AuthSession) => {
+    setSession(nextSession)
+    setConnectedAddress(nextSession.address)
+    setAuthError(null)
+    if (!nextSession.authEnabled || nextSession.authenticated) {
+      setAuthed(true)
+    } else {
+      setAuthed(false)
+    }
   }, [])
+
+  const refreshSession = useCallback(async () => {
+    const nextSession = await fetchSession()
+    applySession(nextSession)
+    return nextSession
+  }, [applySession])
+
+  useEffect(() => {
+    refreshSession()
+      .catch(() => {
+        setSession(null)
+        setAuthed(false)
+        setAuthError('Backend unavailable. Start the backend and retry.')
+      })
+      .finally(() => {
+        setSessionChecked(true)
+      })
+  }, [refreshSession])
+
+  const loadDashboard = useCallback(async () => {
+    void fetchBalance()
+      .then((value) => {
+        setBalance(value)
+      })
+      .catch((err) => {
+        showFlash(`Balance load failed: ${(err as Error).message}`, 'bad')
+      })
+
+    const results = await Promise.allSettled([fetchDashboard(), fetchRuntime()])
+    const [dashResult, runtimeResult] = results
+
+    if (dashResult.status === 'fulfilled') {
+      setDashboard(dashResult.value)
+    }
+
+    if (runtimeResult.status === 'fulfilled') {
+      setRuntime(runtimeResult.value)
+    }
+
+    const rejected = results.filter(
+      (result): result is PromiseRejectedResult => result.status === 'rejected',
+    )
+
+    if (rejected.length === results.length) {
+      throw rejected[0].reason
+    }
+
+    if (rejected.length > 0) {
+      showFlash(`Some dashboard data failed to load: ${rejected[0].reason.message}`, 'bad')
+    }
+  }, [showFlash])
 
   const loadConfig = useCallback(async () => {
     const cfg = await fetchConfig()
     setConfig(cfg.sections)
   }, [])
 
-  const waitForSession = useCallback(async () => {
-    let lastError: Error | null = null
-
-    for (let attempt = 0; attempt < INITIAL_LOAD_RETRIES; attempt += 1) {
-      try {
-        return await fetchSession()
-      } catch (err) {
-        lastError = err as Error
-        await new Promise(resolve => setTimeout(resolve, INITIAL_LOAD_DELAY_MS))
-      }
-    }
-
-    throw lastError ?? new Error('Backend unavailable')
-  }, [])
-
-  const waitForBackend = useCallback(async () => {
-    let lastError: Error | null = null
-
-    for (let attempt = 0; attempt < INITIAL_LOAD_RETRIES; attempt += 1) {
-      try {
-        await Promise.all([loadDashboard(), loadConfig()])
-        return
-      } catch (err) {
-        lastError = err as Error
-        await new Promise(resolve => setTimeout(resolve, INITIAL_LOAD_DELAY_MS))
-      }
-    }
-
-    throw lastError ?? new Error('Backend unavailable')
-  }, [loadConfig, loadDashboard])
-
   useEffect(() => {
-    waitForSession()
-      .then(session => {
-        setAuthSession(session)
-        setAuthState(session.authEnabled && !session.authenticated ? 'anonymous' : 'authenticated')
-      })
-      .catch(err => {
-        setAuthError((err as Error).message)
-        setAuthState('anonymous')
-      })
-  }, [waitForSession])
+    if (!authed) return
 
-  useEffect(() => {
-    if (authState !== 'authenticated') {
-      return
-    }
-
-    waitForBackend().catch(err => {
+    loadDashboard().catch((err) => {
       if (err instanceof ApiError && err.status === 401) {
-        setAuthState('anonymous')
+        setAuthed(false)
+        setAuthError('Session expired. Connect again.')
         return
       }
-      showFlash(`Initial load failed: ${(err as Error).message}`, 'bad')
+      showFlash(`Initial dashboard load failed: ${(err as Error).message}`, 'bad')
+    })
+
+    loadConfig().catch((err) => {
+      if (err instanceof ApiError && err.status === 401) {
+        setAuthed(false)
+        setAuthError('Session expired. Connect again.')
+        return
+      }
+      showFlash(`Config load failed: ${(err as Error).message}`, 'bad')
     })
 
     const timer = setInterval(() => {
-      loadDashboard().catch(err => {
+      loadDashboard().catch((err) => {
         if (err instanceof ApiError && err.status === 401) {
-          setAuthState('anonymous')
-          setAuthError('Session expired. Sign in again.')
-          return
+          setAuthed(false)
+          setAuthError('Session expired. Connect again.')
+        } else {
+          console.warn('Refresh failed', err)
         }
-        console.warn('Refresh failed', err)
       })
     }, 5000)
 
     return () => clearInterval(timer)
-  }, [authState, loadDashboard, showFlash, waitForBackend])
+  }, [authed, loadDashboard, loadConfig, showFlash])
 
   const connectWallet = useCallback(async () => {
-    const ethereum = (window as Window & { ethereum?: BrowserEthereum }).ethereum
-    if (!ethereum) {
-      setAuthError('No injected wallet found. Open the page in a browser with MetaMask or Rabby.')
-      return
-    }
-
     setAuthBusy(true)
-    setAuthError(null)
 
     try {
-      const accounts = await ethereum.request({ method: 'eth_requestAccounts' }) as string[]
-      const selectedAddress = accounts?.[0]
-      if (!selectedAddress) {
-        throw new Error('Wallet did not return an account')
+      const latestSession = await refreshSession()
+
+      if (!latestSession.authEnabled) {
+        setAuthed(true)
+        return
       }
 
-      const chainIdHex = await ethereum.request({ method: 'eth_chainId' }) as string
-      const chainId = Number.parseInt(chainIdHex, 16) || null
-      const challenge = await createChallenge({
-        address: selectedAddress,
-        chainId,
-        domain: window.location.host,
-        origin: window.location.origin,
-      })
-
-      if (!challenge.authEnabled || !challenge.message || !challenge.nonce) {
-        throw new Error('Dashboard auth is not configured on the server')
+      const ethereum = getMetaMaskProvider()
+      if (!ethereum) {
+        setAuthError('MetaMask not found. Make sure the MetaMask extension is installed and enabled.')
+        return
       }
 
-      const signature = await ethereum.request({
-        method: 'personal_sign',
-        params: [challenge.message, selectedAddress],
-      }) as string
-
-      const session = await verifyWallet({
-        address: selectedAddress,
-        nonce: challenge.nonce,
-        signature,
-      })
-
-      setAuthSession(session)
-      setAuthState('authenticated')
       setAuthError(null)
-      showFlash(`Signed in as ${selectedAddress.slice(0, 6)}...${selectedAddress.slice(-4)}`)
+
+      const accounts = await ethereum.request({ method: 'eth_requestAccounts' }) as string[]
+      const address = accounts?.[0]
+      if (!address) throw new Error('No account returned from MetaMask')
+
+      const maxAttempts = 20
+      const retryMs = 1500
+      let lastErr: Error = new Error('Backend unavailable')
+
+      for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+        try {
+          const nextSession = await verifyWallet(address)
+          applySession(nextSession)
+          return
+        } catch (err) {
+          lastErr = err as Error
+          if (err instanceof ApiError && err.status === 403) throw err
+          setAuthError(`Backend connecting... (${attempt + 1}/${maxAttempts})`)
+          await new Promise((resolveDelay) => setTimeout(resolveDelay, retryMs))
+        }
+      }
+
+      throw lastErr
     } catch (err) {
-      setAuthError((err as Error).message)
-      setAuthState('anonymous')
+      const message = (err as Error).message
+      setAuthError(
+        err instanceof ApiError && err.status === 403
+          ? 'This wallet is not authorised to access the dashboard.'
+          : `Connection failed: ${message}`,
+      )
     } finally {
       setAuthBusy(false)
     }
-  }, [showFlash])
+  }, [applySession, refreshSession])
 
   const handleLogout = useCallback(async () => {
     try {
       await logoutSession()
-    } finally {
-      setAuthState('anonymous')
-      setAuthSession(session => session ? { ...session, authenticated: false, address: null } : session)
-      setDashboard(null)
-      setRuntime(null)
-      setBalance(null)
-      setConfig([])
+    } catch {
+      // Ignore logout failures during local cleanup.
     }
+    setAuthed(false)
+    setSession((prev) => (prev ? { ...prev, authenticated: false, address: null } : prev))
+    setConnectedAddress(null)
+    setDashboard(null)
+    setRuntime(null)
+    setBalance(null)
+    setConfig([])
   }, [])
 
   const handleBotAction = useCallback(async (url: string, message: string, body: unknown) => {
@@ -196,8 +232,8 @@ export default function App() {
       await loadDashboard()
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
-        setAuthState('anonymous')
-        setAuthError('Session expired. Sign in again.')
+        setAuthed(false)
+        setAuthError('Session expired. Connect again.')
         return
       }
       showFlash(`Action failed: ${(err as Error).message}`, 'bad')
@@ -209,26 +245,34 @@ export default function App() {
   const handleSaveConfig = useCallback(async (values: Record<string, unknown>) => {
     try {
       await saveConfig(values)
-      showFlash('Config saved to database. Restart the bot process to apply most changes.')
+      showFlash('Config saved. Restart the bot process to apply most changes.')
       await loadConfig()
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
-        setAuthState('anonymous')
-        setAuthError('Session expired. Sign in again.')
+        setAuthed(false)
+        setAuthError('Session expired. Connect again.')
         return
       }
       showFlash(`Failed to save config: ${(err as Error).message}`, 'bad')
     }
   }, [loadConfig, showFlash])
 
-  if (authState === 'checking') {
-    return <main className="auth-shell"><section className="auth-card"><h1>Checking session...</h1></section></main>
+  if (!sessionChecked) {
+    return (
+      <main className="auth-shell">
+        <section className="auth-card">
+          <div className="auth-kicker">Backend Session</div>
+          <h1>Loading dashboard</h1>
+          <p>Checking backend availability and restoring the current session.</p>
+        </section>
+      </main>
+    )
   }
 
-  if (authState !== 'authenticated') {
+  if (!authed) {
     return (
       <AuthScreen
-        session={authSession}
+        session={session}
         busy={authBusy}
         error={authError}
         onConnect={connectWallet}
@@ -247,7 +291,7 @@ export default function App() {
         busy={busy}
         voiceEnabled={voiceEnabled}
         lastEvent={lastEvent}
-        onVoiceToggle={() => setVoiceEnabled(v => !v)}
+        onVoiceToggle={() => setVoiceEnabled((value) => !value)}
         onScan={() => handleBotAction('/api/bot/scan', 'Manual scan requested.', {})}
         onPause={() =>
           handleBotAction('/api/bot/pause', 'Bot paused for 2 hours.', {
@@ -258,15 +302,17 @@ export default function App() {
         onResume={() => handleBotAction('/api/bot/resume', 'Bot resumed.', {})}
       />
 
-      <section className="panel panel--auth-bar">
-        <div className="auth-bar">
-          <div>
-            <div className="mini">Signed in wallet</div>
-            <div className="panel-title mono">{authSession?.address ?? authSession?.allowedWallet ?? 'unknown'}</div>
+      {session?.authEnabled !== false && (
+        <section className="panel panel--auth-bar">
+          <div className="auth-bar">
+            <div>
+              <div className="mini">Connected wallet</div>
+              <div className="panel-title mono">{connectedAddress ?? '-'}</div>
+            </div>
+            <button className="btn-secondary" onClick={handleLogout}>Disconnect</button>
           </div>
-          <button className="btn-secondary" onClick={handleLogout}>Disconnect</button>
-        </div>
-      </section>
+        </section>
+      )}
 
       <section className="layout">
         <div className="stack">

@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
@@ -61,6 +61,7 @@ export class AppConfigService implements OnModuleInit {
       }
 
       const value = this.serializeValue(field, rawValue);
+      this.validateSettingValue(field.key, value);
       await this.settingsRepo.upsert({ key: field.key, value }, ['key']);
       this.values.set(field.key, value);
       updatedKeys.push(field.key);
@@ -171,7 +172,7 @@ export class AppConfigService implements OnModuleInit {
     if (field.type === 'number') {
       const value = Number(rawValue);
       if (!Number.isFinite(value)) {
-        throw new Error(`Invalid number for ${field.key}`);
+        throw new BadRequestException(`Invalid number for ${field.key}`);
       }
       return String(value);
     }
@@ -183,7 +184,7 @@ export class AppConfigService implements OnModuleInit {
       if (rawValue === false || rawValue === 'false') {
         return 'false';
       }
-      throw new Error(`Invalid boolean for ${field.key}`);
+      throw new BadRequestException(`Invalid boolean for ${field.key}`);
     }
 
     if (field.type === 'json') {
@@ -191,9 +192,26 @@ export class AppConfigService implements OnModuleInit {
     }
 
     if (typeof rawValue !== 'string') {
-      throw new Error(`Invalid string for ${field.key}`);
+      throw new BadRequestException(`Invalid string for ${field.key}`);
     }
 
     return rawValue;
+  }
+
+  private validateSettingValue(key: string, value: string): void {
+    if (key === 'hyperliquidPrivateKey') {
+      if (!/^0x[a-fA-F0-9]{64}$/.test(value.trim())) {
+        throw new BadRequestException(
+          'API Wallet Private Key must be a real 0x-prefixed 64-byte hex private key, not a wallet address',
+        );
+      }
+      return;
+    }
+
+    if (key === 'hyperliquidAccountAddress') {
+      if (!/^0x[a-fA-F0-9]{40}$/.test(value.trim())) {
+        throw new BadRequestException('Main Account Address must be a valid 0x-prefixed wallet address');
+      }
+    }
   }
 }

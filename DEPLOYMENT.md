@@ -1,88 +1,59 @@
-# Production deployment
+# TradingOn Deployment
 
-This project is set up to run on an Ubuntu server with Docker Compose, behind Nginx, at `yogurtsoftware.online`.
+## Local development
 
-## 1. Server prerequisites
-
-Install the required packages on the Ubuntu server:
-
-```bash
-sudo apt update
-sudo apt install -y docker.io docker-compose-plugin nginx certbot python3-certbot-nginx curl
-sudo systemctl enable --now docker nginx
-```
-
-Create the application directory:
+1. Copy `.env.example` to `.env` and fill in secrets.
+2. Start Postgres:
 
 ```bash
-sudo mkdir -p /opt/tradingon
-sudo chown -R $USER:$USER /opt/tradingon
+docker compose up -d db
 ```
 
-## 2. Environment file
-
-Create `/opt/tradingon/.env` on the server. The deployment workflow does not overwrite it.
-
-Minimum example:
-
-```env
-PORT=3002
-POSTGRES_DB=tradingon
-POSTGRES_USER=tradingon
-POSTGRES_PASSWORD=change-me
-DASHBOARD_ALLOWED_WALLET=0xYourWalletAddress
-DASHBOARD_AUTH_SECRET=replace-with-a-random-32-plus-character-secret
-DASHBOARD_SESSION_TTL_HOURS=12
-DATABASE_SSL=false
-TYPEORM_SYNCHRONIZE=false
-HYPERLIQUID_PRIVATE_KEY=replace-me
-```
-
-Add the rest of your runtime variables there as needed for the trading bot.
-
-## 3. Nginx
-
-Copy [nginx/tradingon.conf](/c:/work/tradingon/nginx/tradingon.conf) to `/etc/nginx/sites-available/tradingon.conf`, enable it, and reload Nginx:
+3. Start frontend and backend together:
 
 ```bash
-sudo cp /opt/tradingon/nginx/tradingon.conf /etc/nginx/sites-available/tradingon.conf
-sudo ln -sf /etc/nginx/sites-available/tradingon.conf /etc/nginx/sites-enabled/tradingon.conf
-sudo nginx -t
-sudo systemctl reload nginx
+npm run dev:all
 ```
 
-Then issue the TLS certificate:
+The frontend runs on `http://localhost:5173` and proxies `/api` to the Nest backend on `PORT`.
 
-```bash
-sudo certbot --nginx -d yogurtsoftware.online -d www.yogurtsoftware.online
-```
+## Production with Docker
 
-## 4. GitHub Actions secrets
-
-Add these repository secrets before enabling deploys:
-
-- `APP_DIR` = `/opt/tradingon`
-- `SSH_HOST` = your server IP or DNS name
-- `SSH_PORT` = `22`
-- `SSH_PRIVATE_KEY` = private key for the deploy user
-- `SSH_USER` = deploy user on the server
-
-The deploy workflow syncs the repository to the server and runs [scripts/deploy-prod.sh](/c:/work/tradingon/scripts/deploy-prod.sh), which rebuilds the Docker image and restarts the stack.
-
-## 5. Deploy flow
-
-- CI runs on pull requests and pushes to `main`.
-- CD runs on pushes to `main` and on manual dispatch.
-- The app is exposed only on `127.0.0.1:3002`; Nginx is the public entrypoint.
-- Health is checked at `http://127.0.0.1:3002/api/health` during deploy.
-
-## 6. Manual recovery commands
-
-From `/opt/tradingon` on the server:
+1. Prepare a production `.env` on the server.
+2. Build and start the stack:
 
 ```bash
 docker compose -f docker-compose.prod.yml up -d --build
-docker compose -f docker-compose.prod.yml logs -f app
-docker compose -f docker-compose.prod.yml ps
-curl http://127.0.0.1:3002/api/health
 ```
+
+3. Check health:
+
+```bash
+curl http://127.0.0.1:${PORT:-3000}/api/health
+```
+
+The backend serves the built frontend from `public/`, so the production app runs as a single origin.
+
+## CI/CD
+
+`CI` workflow:
+
+- installs dependencies
+- runs `npm run typecheck`
+- runs `npm run build:all`
+- runs `npm test`
+- builds the Docker image
+
+`Deploy` workflow:
+
+- repeats typecheck, build, and tests
+- syncs the repo to the target server over SSH
+- runs `scripts/deploy-prod.sh`
+
+Required GitHub secrets for deployment:
+
+- `SSH_PRIVATE_KEY`
+- `SSH_HOST`
+- `SSH_PORT`
+- `SSH_USER`
+- `APP_DIR`

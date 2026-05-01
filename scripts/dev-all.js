@@ -6,7 +6,7 @@ require('dotenv').config({ path: path.resolve(__dirname, '..', '.env') })
 const repoRoot = path.resolve(__dirname, '..')
 const isWin = process.platform === 'win32'
 const backendHost = '127.0.0.1'
-const backendPort = Number(process.env.PORT || 3002)
+const backendPort = Number(process.env.PORT || 3000)
 const databaseUrl = process.env.DATABASE_URL || 'postgresql://tradingon:tradingon@localhost:5434/tradingon'
 const databaseStartupTimeoutMs = 60_000
 const backendStartupTimeoutMs = 45_000
@@ -38,7 +38,7 @@ function createCommand(command) {
     : { command: 'npm', args: ['run', command] }
 }
 
-function startProcess(name, cwd, command, extraEnv = {}) {
+function startProcess(name, cwd, command, extraEnv = {}, options = {}) {
   const childCommand = createCommand(command)
   const child = spawn(childCommand.command, childCommand.args, {
     cwd,
@@ -52,8 +52,16 @@ function startProcess(name, cwd, command, extraEnv = {}) {
     shutdown(1)
   })
 
-  child.once('exit', (code, signal) => {
+  child.once('exit', async (code, signal) => {
     const detail = signal ? `signal ${signal}` : `code ${code ?? 0}`
+    if (options.allowExistingPort) {
+      const stillAvailable = await isPortOpen(options.allowExistingPort.host, options.allowExistingPort.port)
+      if (stillAvailable) {
+        console.warn(`[${name}] exited with ${detail}, but ${options.allowExistingPort.host}:${options.allowExistingPort.port} is already serving traffic; keeping other dev processes running`)
+        return
+      }
+    }
+
     console.error(`[${name}] exited with ${detail}`)
     shutdown(code ?? 0)
   })
@@ -143,8 +151,17 @@ async function main() {
     await waitForPortOpen(databaseEndpoint.host, databaseEndpoint.port, databaseStartupTimeoutMs)
   }
 
-  children.push(startProcess('backend', repoRoot, 'start:api:dev'))
-  await waitForPortOpen(backendHost, backendPort, backendStartupTimeoutMs)
+  const backendRunning = await isPortOpen(backendHost, backendPort)
+  if (backendRunning) {
+    console.log(`[dev:all] backend already running on ${backendHost}:${backendPort}; reusing existing process`)
+  } else {
+    children.push(
+      startProcess('backend', repoRoot, 'start:api:dev', {}, {
+        allowExistingPort: { host: backendHost, port: backendPort },
+      }),
+    )
+    await waitForPortOpen(backendHost, backendPort, backendStartupTimeoutMs)
+  }
 
   children.push(
     startProcess('frontend', repoRoot, 'start:ui:dev', {

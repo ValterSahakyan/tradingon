@@ -54,7 +54,14 @@ async function main() {
     const repo = AppDataSource.getRepository(AppSetting);
     let seeded = 0;
 
+    const existing = await repo.find();
+    const existingKeys = new Set(existing.map((s) => s.key));
+
     for (const field of APP_SETTING_FIELDS) {
+      if (existingKeys.has(field.key)) {
+        continue; // never overwrite values already set in the DB (e.g. via Config Panel)
+      }
+
       const value = getValueByPath(config, field.path);
       if (value === undefined || value === null) {
         continue;
@@ -64,7 +71,7 @@ async function main() {
       seeded += 1;
     }
 
-    console.log(`Seeded ${seeded} app settings into the database.`);
+    console.log(`Seeded ${seeded} app settings into the database (${existingKeys.size} already present, skipped).`);
   } finally {
     await AppDataSource.destroy();
   }

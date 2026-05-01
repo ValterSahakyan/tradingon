@@ -36,21 +36,21 @@ export default function TradesTable({ trades }: Props) {
             </tr>
           </thead>
           <tbody>
-            {trades.map((t, i) => {
-              const pnl = Number(t.pnlUsd ?? 0)
+            {trades.map((trade, index) => {
+              const pnl = Number(trade.pnlUsd ?? 0)
               const pnlColor = pnl >= 0 ? 'var(--good)' : 'var(--bad)'
               return (
-                <tr key={i}>
-                  <td className="mono">{t.token}</td>
-                  <td>{t.direction?.toUpperCase() ?? '—'}</td>
-                  <td className="mono">{Number(t.entryPrice ?? 0).toFixed(6)}</td>
+                <tr key={index}>
+                  <td className="mono">{trade.token}</td>
+                  <td>{trade.direction?.toUpperCase() ?? '-'}</td>
+                  <td className="mono">{Number(trade.entryPrice ?? 0).toFixed(6)}</td>
                   <td className="mono">
-                    {t.exitPrice == null ? '—' : Number(t.exitPrice).toFixed(6)}
+                    {trade.exitPrice == null ? '-' : Number(trade.exitPrice).toFixed(6)}
                   </td>
                   <td className="mono" style={{ color: pnlColor }}>{formatUsd(pnl)}</td>
-                  <td>{t.exitReason ?? '—'}</td>
-                  <td>{t.score}/4</td>
-                  <td>{t.durationMinutes == null ? '—' : `${t.durationMinutes}m`}</td>
+                  <td>{trade.exitReason ?? '-'}</td>
+                  <td>{trade.score}/4</td>
+                  <td>{trade.durationMinutes == null ? '-' : `${trade.durationMinutes}m`}</td>
                 </tr>
               )
             })}
