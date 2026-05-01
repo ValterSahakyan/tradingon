@@ -141,13 +141,23 @@ export class HyperliquidClient implements OnModuleInit {
       return;
     }
 
+    const current = await this.getActiveAssetData(coin);
+    const isCross = current?.leverage?.type === 'cross' || this.usesUnifiedCollateral();
+    if (current?.leverage?.value === leverage && current.leverage.type === (isCross ? 'cross' : 'isolated')) {
+      this.logger.log(`setLeverage skipped for ${coin}: already ${current.leverage.type} ${leverage}x`);
+      return;
+    }
+
     const vaultAddress = this.getVaultAddress();
-    const action = { type: 'updateLeverage', asset: asset.index, isCross: false, leverage };
+    const action = { type: 'updateLeverage', asset: asset.index, isCross, leverage };
     try {
       const { sig, nonce } = await this.signL1Action(action, vaultAddress);
       await http.post('/exchange', { action, nonce, signature: sig, vaultAddress });
+      this.logger.log(`setLeverage applied for ${coin}: ${isCross ? 'cross' : 'isolated'} ${leverage}x`);
     } catch (err) {
-      this.logger.warn(`setLeverage failed for ${coin}: ${err.message}`);
+      this.logger.warn(
+        `setLeverage failed for ${coin}: ${this.formatAxiosError(err)} | action=${JSON.stringify(action)}`,
+      );
     }
   }
 
@@ -340,7 +350,7 @@ export class HyperliquidClient implements OnModuleInit {
   private async signL1Action(
     action: Record<string, any>,
     vaultAddress: string | null = null,
-  ): Promise<{ sig: string; nonce: number }> {
+  ): Promise<{ sig: { r: string; s: string; v: number }; nonce: number }> {
     if (!this.wallet) {
       throw new Error('Wallet not initialised');
     }
@@ -367,8 +377,16 @@ export class HyperliquidClient implements OnModuleInit {
       connectionId,
     };
 
-    const sig = await this.wallet._signTypedData(domain, types, message);
-    return { sig, nonce };
+    const rawSig = await this.wallet._signTypedData(domain, types, message);
+    const split = ethers.utils.splitSignature(rawSig);
+    return {
+      sig: {
+        r: split.r,
+        s: split.s,
+        v: split.v,
+      },
+      nonce,
+    };
   }
 
   private buildConnectionId(
@@ -404,6 +422,7 @@ export class HyperliquidClient implements OnModuleInit {
     const vaultAddress = this.getVaultAddress();
     const action = { type: 'order', orders, grouping: 'na' };
     try {
+      this.logger.log(`Sending order: ${JSON.stringify({ action, vaultAddress })}`);
       const { sig, nonce } = await this.signL1Action(action, vaultAddress);
       const res = await http.post('/exchange', {
         action,
@@ -436,9 +455,36 @@ export class HyperliquidClient implements OnModuleInit {
       this.logger.warn(`Unexpected order response: ${JSON.stringify(res.data)}`);
       return null;
     } catch (err) {
-      this.logger.error(`sendOrder failed: ${err.message}`);
+      this.logger.error(`sendOrder failed: ${this.formatAxiosError(err)} | action=${JSON.stringify(action)}`);
       return null;
     }
+  }
+
+  private async getActiveAssetData(
+    coin: string,
+  ): Promise<{ leverage?: { type?: string; value?: number } } | null> {
+    const http = await this.getHttp();
+    const user = this.accountAddress ?? this.wallet?.address;
+    if (!http || !user) {
+      return null;
+    }
+
+    try {
+      const res = await http.post('/info', { type: 'activeAssetData', user, coin });
+      return res.data ?? null;
+    } catch (err) {
+      this.logger.warn(`activeAssetData lookup failed for ${coin}: ${this.formatAxiosError(err)}`);
+      return null;
+    }
+  }
+
+  private formatAxiosError(err: any): string {
+    const status = err?.response?.status;
+    const data = err?.response?.data;
+    if (status) {
+      return `status=${status} body=${JSON.stringify(data ?? {})}`;
+    }
+    return err?.message ?? String(err);
   }
 
   private async loadAssetMeta(attempt = 1): Promise<void> {
@@ -637,11 +683,10 @@ export class HyperliquidClient implements OnModuleInit {
   }
 
   private getVaultAddress(): string | null {
-    if (!this.wallet || !this.accountAddress) {
-      return null;
-    }
-
-    return this.accountAddress !== this.wallet.address.toLowerCase() ? this.accountAddress : null;
+    // HYPERLIQUID_ACCOUNT_ADDRESS is the main account used for balance/position
+    // queries when trading with an approved API wallet. It is not a vault or
+    // subaccount address and must not be sent as vaultAddress on exchange actions.
+    return null;
   }
 
   private async getHttp(): Promise<AxiosInstance | null> {

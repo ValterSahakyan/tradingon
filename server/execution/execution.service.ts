@@ -40,6 +40,9 @@ export class ExecutionService {
       );
     }
 
+    this.logger.log(
+      `Opening ${direction} ${token} | targetNotional=$${effectiveNotional.toFixed(2)} | leverage=${leverage}x | size=${sz}`,
+    );
     const result = await this.hl.placeMarketOrder(token, isBuy, sz);
     if (!result || result.status === 'rejected') {
       this.logger.error(`Order rejected for ${token}`);

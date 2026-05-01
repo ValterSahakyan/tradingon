@@ -38,6 +38,16 @@ export class PositionManagerService implements OnModuleInit {
     this.ws.subscribeToUserFills(accountAddress);
   }
 
+  @OnEvent('ws.userFills')
+  async handleUserFills(): Promise<void> {
+    await this.syncPositionsFromExchange();
+  }
+
+  @OnEvent('ws.userEvents')
+  async handleUserEvents(): Promise<void> {
+    await this.syncPositionsFromExchange();
+  }
+
   // ─── Trade open ────────────────────────────────────────────────
 
   async openTrade(signal: TradeSignal): Promise<boolean> {
@@ -241,6 +251,23 @@ export class PositionManagerService implements OnModuleInit {
   private async syncPositionsFromExchange(): Promise<void> {
     try {
       const hlPositions = await this.hlClient.getOpenPositions();
+      const exchangeTokens = new Set(
+        hlPositions
+          .map((position) => position.coin)
+          .filter((coin) => typeof coin === 'string' && coin.length > 0),
+      );
+
+      for (const token of [...this.positions.keys()]) {
+        if (!exchangeTokens.has(token)) {
+          this.logger.log(`Removing stale local position for ${token} after exchange resync`);
+          const local = this.positions.get(token);
+          if (local) {
+            this.tradeLogIds.delete(local.id);
+          }
+          this.positions.delete(token);
+        }
+      }
+
       if (hlPositions.length === 0) return;
 
       this.logger.log(`Resyncing ${hlPositions.length} position(s) from exchange`);
