@@ -26,12 +26,13 @@ export default function HeroSection({ dashboard, runtime, balance, busy, voiceEn
       : balance?.spotBalance != null && balance.spotBalance > 0
         ? 'var(--warn)'
         : undefined
+  const zeroOrNull = balance?.perpBalance == null || balance.perpBalance === 0
   const balanceSubtext =
     balance == null
       ? 'Loading...'
-      : balance.needsAccountAddress
+      : balance.needsAccountAddress && zeroOrNull
         ? 'Set Main Account Address in Config → Exchange'
-        : balance.spotBalance != null && balance.spotBalance > 0 && (balance.perpBalance == null || balance.perpBalance === 0)
+        : balance.spotBalance != null && balance.spotBalance > 0 && zeroOrNull
           ? `Spot: $${Number(balance.spotBalance).toFixed(2)} - transfer to perp account`
           : balance.updatedAt
             ? `Updated ${timeAgo(balance.updatedAt)}`

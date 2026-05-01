@@ -34,6 +34,8 @@ export class HyperliquidClient implements OnModuleInit {
   private httpReady = false;   // set once — HTTP client never changes
   private wallet: ethers.Wallet | null = null;
   private accountAddress: string | null = null;
+  private walletInitPromise: Promise<void> | null = null;
+  private configFingerprint: string | null = null;
   private accountAbstraction: string | null = null;
   private accountAbstractionChecked = false;
   private assets = new Map<string, AssetMeta>();
@@ -41,6 +43,7 @@ export class HyperliquidClient implements OnModuleInit {
   private closingInFlight = new Set<string>();
   private cachedAccountValue: number | null = null;
   private cachedAccountValueAt = 0;
+  private cachedSpotUsdc: number | null = null;
 
   constructor(private readonly config: AppConfigService) {}
 
@@ -218,6 +221,11 @@ export class HyperliquidClient implements OnModuleInit {
         const spotUsdc = spotBalances.find((b: any) => b.coin === 'USDC');
         const spotTotal = parseFloat(spotUsdc?.total ?? '0');
 
+        // Cache spot USDC alongside account value to avoid a second API call
+        if (Number.isFinite(spotTotal)) {
+          this.cachedSpotUsdc = spotTotal;
+        }
+
         this.logger.log(`Balance — perp: $${perpValue.toFixed(2)}, spot USDC: $${spotTotal.toFixed(2)} | marginSummary.accountValue="${perpRes.data?.marginSummary?.accountValue ?? 'missing'}" spotUsdc.total="${spotUsdc?.total ?? 'missing'}"`);
         this.logger.log(`getAccountValue: usesUnifiedCollateral=${this.usesUnifiedCollateral()} — will return ${this.usesUnifiedCollateral() ? `spotTotal=$${spotTotal}` : `perpValue=$${perpValue}`}`);
 
@@ -269,10 +277,16 @@ export class HyperliquidClient implements OnModuleInit {
   }
 
   async getSpotUsdcBalance(): Promise<number | null> {
+    // Reuse the spot value already fetched by getAccountValue() when cache is fresh
+    const cacheAge = Date.now() - this.cachedAccountValueAt;
+    if (this.cachedSpotUsdc !== null && cacheAge < 20_000) {
+      return this.cachedSpotUsdc;
+    }
+
     const http = await this.getHttp();
     if (!http) {
       this.logger.warn('getSpotUsdcBalance: HTTP client not ready');
-      return null;
+      return this.cachedSpotUsdc;
     }
     if (!this.wallet) {
       this.logger.warn('getSpotUsdcBalance: wallet not loaded');
@@ -285,10 +299,14 @@ export class HyperliquidClient implements OnModuleInit {
       const usdc = balances.find((b: any) => b.coin === 'USDC');
       const total = parseFloat(usdc?.total ?? '0');
       this.logger.log(`getSpotUsdcBalance: address=${queryAddress} USDC.total="${usdc?.total ?? 'missing'}" parsed=${total}`);
-      return Number.isFinite(total) ? total : null;
+      if (Number.isFinite(total)) {
+        this.cachedSpotUsdc = total;
+        return total;
+      }
+      return null;
     } catch (err) {
       this.logger.warn(`getSpotUsdcBalance failed: ${err.message}`);
-      return null;
+      return this.cachedSpotUsdc;
     }
   }
 
@@ -424,7 +442,7 @@ export class HyperliquidClient implements OnModuleInit {
   }
 
   private async loadAssetMeta(attempt = 1): Promise<void> {
-    const http = await this.getHttp();
+    const http = this.http;
     if (!http) {
       return;
     }
@@ -453,6 +471,12 @@ export class HyperliquidClient implements OnModuleInit {
   private async ensureConfigured(): Promise<void> {
     await this.config.waitUntilReady();
 
+    const nextFingerprint = this.buildConfigFingerprint();
+    if (nextFingerprint !== this.configFingerprint) {
+      this.resetConfigState();
+      this.configFingerprint = nextFingerprint;
+    }
+
     // HTTP client is created once from the API URL (requires restart if URL changes)
     if (!this.httpReady) {
       const apiUrl = this.config.get<string>('hyperliquid.apiUrl');
@@ -468,30 +492,18 @@ export class HyperliquidClient implements OnModuleInit {
 
     // Wallet init is retried on every call until the key is available in DB.
     // This allows the key to be set via the Config panel without a restart.
+    // Guard concurrent callers with a shared promise so discoverMasterAccount
+    // completes before any caller proceeds to query the account balance.
     if (!this.wallet) {
-      const pk = this.config.get<string>('hyperliquid.privateKey');
-      if (!pk) {
-        this.logger.warn('HYPERLIQUID_PRIVATE_KEY not found in DB or env — set it in the Config panel');
-        return;
+      if (!this.walletInitPromise) {
+        this.walletInitPromise = this.initWallet().finally(() => {
+          if (!this.wallet) {
+            // Init failed — allow retry on the next call
+            this.walletInitPromise = null;
+          }
+        });
       }
-      try {
-        this.wallet = new ethers.Wallet(pk.trim());
-        const manualAddr = this.config.get<string>('hyperliquid.accountAddress');
-        const manualLower = manualAddr?.toLowerCase();
-        const walletLower = this.wallet.address.toLowerCase();
-        if (manualLower && manualLower !== walletLower) {
-          // Explicit override that differs from the signing wallet — use it directly
-          this.accountAddress = manualLower;
-        } else {
-          // No override, or it was accidentally set to the API wallet address —
-          // auto-discover the master account this API wallet belongs to
-          this.accountAddress = await this.discoverMasterAccount(this.wallet.address);
-        }
-        this.logger.log(`Wallet ready: ${this.wallet.address} | Account: ${this.accountAddress} | Network: ${this.isMainnet ? 'MAINNET' : 'testnet'}`);
-      } catch (err) {
-        this.logger.error(`HYPERLIQUID_PRIVATE_KEY is invalid (${err.message}) — must be a 0x-prefixed 64-char hex private key. Update it in the Config panel.`);
-        return;
-      }
+      await this.walletInitPromise;
     }
 
     // Load assets once after wallet is initialized. Guard against concurrent loads.
@@ -503,6 +515,55 @@ export class HyperliquidClient implements OnModuleInit {
     if (this.assetsLoading) {
       await this.assetsLoading;
     }
+  }
+
+  private async initWallet(): Promise<void> {
+    const pk = this.config.get<string>('hyperliquid.privateKey');
+    if (!pk) {
+      this.logger.warn('HYPERLIQUID_PRIVATE_KEY not found in DB or env — set it in the Config panel');
+      return;
+    }
+    try {
+      this.wallet = new ethers.Wallet(pk.trim());
+      const manualAddr = this.config.get<string>('hyperliquid.accountAddress');
+      const manualLower = manualAddr?.toLowerCase();
+      const walletLower = this.wallet.address.toLowerCase();
+      if (manualLower && manualLower !== walletLower) {
+        // Explicit override that differs from the signing wallet — use it directly
+        this.accountAddress = manualLower;
+      } else {
+        // No override, or it was accidentally set to the API wallet address —
+        // auto-discover the master account this API wallet belongs to
+        this.accountAddress = await this.discoverMasterAccount(this.wallet.address);
+      }
+      this.logger.log(`Wallet ready: ${this.wallet.address} | Account: ${this.accountAddress} | Network: ${this.isMainnet ? 'MAINNET' : 'testnet'}`);
+    } catch (err) {
+      this.wallet = null;
+      this.logger.error(`HYPERLIQUID_PRIVATE_KEY is invalid (${err.message}) — must be a 0x-prefixed 64-char hex private key. Update it in the Config panel.`);
+    }
+  }
+
+  private buildConfigFingerprint(): string {
+    const apiUrl = this.config.get<string>('hyperliquid.apiUrl') ?? '';
+    const testnet = this.config.get<boolean>('hyperliquid.testnet') ? 'true' : 'false';
+    const pk = this.config.get<string>('hyperliquid.privateKey')?.trim() ?? '';
+    const account = this.config.get<string>('hyperliquid.accountAddress')?.trim().toLowerCase() ?? '';
+    return [apiUrl, testnet, pk, account].join('|');
+  }
+
+  private resetConfigState(): void {
+    this.http = null;
+    this.httpReady = false;
+    this.wallet = null;
+    this.accountAddress = null;
+    this.walletInitPromise = null;
+    this.accountAbstraction = null;
+    this.accountAbstractionChecked = false;
+    this.assets.clear();
+    this.assetsLoading = null;
+    this.cachedAccountValue = null;
+    this.cachedAccountValueAt = 0;
+    this.cachedSpotUsdc = null;
   }
 
   private async discoverMasterAccount(agentAddress: string): Promise<string> {
