@@ -13,8 +13,7 @@ export class ExecutionService {
   ) {}
 
   async openPosition(signal: TradeSignal): Promise<OpenPosition | null> {
-    if (!this.config.get<boolean>('execution.enabled')) {
-      this.logger.warn(`Execution disabled - refusing to open ${signal.token}`);
+    if (!this.isExecutionAllowed('open', signal.token)) {
       return null;
     }
 
@@ -99,8 +98,7 @@ export class ExecutionService {
     sizeToClose: number,
     reason: string,
   ): Promise<number | null> {
-    if (!this.config.get<boolean>('execution.enabled')) {
-      this.logger.warn(`Execution disabled - refusing to close ${position.token} (${reason})`);
+    if (!this.isExecutionAllowed('close', `${position.token} (${reason})`)) {
       return null;
     }
 
@@ -145,5 +143,21 @@ export class ExecutionService {
     // Round down to exchange precision using szDecimals
     const raw = notional / price;
     return raw;
+  }
+
+  private isExecutionAllowed(action: 'open' | 'close', target: string): boolean {
+    if (!this.config.get<boolean>('execution.enabled')) {
+      this.logger.warn(`Execution disabled - refusing to ${action} ${target}`);
+      return false;
+    }
+
+    const isTestnet = this.config.get<boolean>('hyperliquid.testnet');
+    const allowMainnet = this.config.get<boolean>('execution.allowMainnet');
+    if (!isTestnet && !allowMainnet) {
+      this.logger.error(`Mainnet execution blocked - ALLOW_MAINNET_TRADING is off; refusing to ${action} ${target}`);
+      return false;
+    }
+
+    return true;
   }
 }
