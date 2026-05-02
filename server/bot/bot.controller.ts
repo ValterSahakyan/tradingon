@@ -38,4 +38,14 @@ export class BotController {
       state: this.risk.getSnapshot(),
     };
   }
+
+  @Post('close-position')
+  async closePosition(@Body() body: { token: string }) {
+    return this.bot.closePosition(body.token);
+  }
+
+  @Post('close-all-positions')
+  async closeAllPositions() {
+    return this.bot.closeAllPositions();
+  }
 }

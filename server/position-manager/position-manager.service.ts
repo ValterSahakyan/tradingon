@@ -210,6 +210,17 @@ export class PositionManagerService implements OnModuleInit {
     }
   }
 
+  async closePositionByToken(token: string, reason: ExitReason = 'manual'): Promise<boolean> {
+    const position = this.positions.get(token);
+    if (!position) {
+      this.logger.warn(`Requested manual close for missing position: ${token}`);
+      return false;
+    }
+
+    await this.closeAndLog(position, reason);
+    return !this.positions.has(token);
+  }
+
   async checkTimeStops(): Promise<void> {
     const maxHoldMs = this.config.get<number>('exits.maxHoldHours') * 3600_000;
     const tokens = [...this.positions.keys()];

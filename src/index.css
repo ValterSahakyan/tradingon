@@ -728,9 +728,20 @@ button:disabled {
 
 .positions-actions {
   display: inline-flex;
-  gap: 14px;
+  gap: 10px;
+}
+
+.positions-action-btn {
+  padding: 7px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(111, 183, 171, 0.16);
+  background: rgba(89, 223, 207, 0.08);
   color: var(--accent);
   font-weight: 700;
+}
+
+.positions-action-btn:hover:not(:disabled) {
+  background: rgba(89, 223, 207, 0.14);
 }
 
 .signals-table-wrap {

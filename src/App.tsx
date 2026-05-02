@@ -340,6 +340,14 @@ export default function App() {
     window.location.hash = nextHash
   }, [])
 
+  const handleClosePosition = useCallback(async (token: string) => {
+    await handleBotAction('/api/bot/close-position', `Market close requested for ${token}.`, { token })
+  }, [handleBotAction])
+
+  const handleCloseAllPositions = useCallback(async () => {
+    await handleBotAction('/api/bot/close-all-positions', 'Close all positions requested.', {})
+  }, [handleBotAction])
+
   if (!sessionChecked) {
     return (
       <main className="auth-shell">
@@ -400,7 +408,12 @@ export default function App() {
 
       {currentPage === 'positions' && (
         <section className="layout">
-          <PositionsPanel positions={dashboard?.positions ?? []} />
+          <PositionsPanel
+            positions={dashboard?.positions ?? []}
+            busy={busy}
+            onClosePosition={handleClosePosition}
+            onCloseAll={handleCloseAllPositions}
+          />
         </section>
       )}
 

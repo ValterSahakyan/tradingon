@@ -3,16 +3,25 @@ import { formatUsd, formatPct } from '../utils'
 
 interface Props {
   positions: Position[]
+  busy?: boolean
+  onClosePosition?: (token: string) => void
+  onCloseAll?: () => void
 }
 
-export default function PositionsPanel({ positions }: Props) {
+export default function PositionsPanel({ positions, busy = false, onClosePosition, onCloseAll }: Props) {
   return (
     <div className="panel">
       <div className="panel-head">
         <div className="portfolio-tabs">
           <span className="portfolio-tab is-active">Positions ({positions.length})</span>
         </div>
-        <div className="mini">All</div>
+        {positions.length > 0 ? (
+          <button type="button" className="table-page-btn" disabled={busy} onClick={onCloseAll}>
+            Close All Positions
+          </button>
+        ) : (
+          <div className="mini">All</div>
+        )}
       </div>
 
       {positions.length === 0 ? (
@@ -37,13 +46,18 @@ export default function PositionsPanel({ positions }: Props) {
                 <th>Liq. Price</th>
                 <th>Margin</th>
                 <th>Funding</th>
-                <th>Close All</th>
+                <th>Actions</th>
                 <th>TP/SL</th>
               </tr>
             </thead>
             <tbody>
               {positions.map((pos, i) => (
-                <PositionRow key={`${pos.token}-${i}`} pos={pos} />
+                <PositionRow
+                  key={`${pos.token}-${i}`}
+                  pos={pos}
+                  busy={busy}
+                  onClose={() => onClosePosition?.(pos.token)}
+                />
               ))}
             </tbody>
           </table>
@@ -53,7 +67,7 @@ export default function PositionsPanel({ positions }: Props) {
   )
 }
 
-function PositionRow({ pos }: { pos: Position }) {
+function PositionRow({ pos, busy, onClose }: { pos: Position; busy: boolean; onClose: () => void }) {
   const pnlNum = Number(pos.pnlUsd)
   const pnlClass = pnlNum >= 0 ? 'good' : 'bad'
   const syntheticSize = `${Number(pos.notional / Math.max(pos.currentPrice, 0.00000001)).toFixed(2)} ${pos.token}`
@@ -83,9 +97,9 @@ function PositionRow({ pos }: { pos: Position }) {
       <td className="mono">{pos.holdMins}m</td>
       <td>
         <div className="positions-actions">
-          <span>Limit</span>
-          <span>Market</span>
-          <span>Reverse</span>
+          <button type="button" className="positions-action-btn" disabled={busy} onClick={onClose}>
+            Market Close
+          </button>
         </div>
       </td>
       <td className="mono">{tpSl}</td>

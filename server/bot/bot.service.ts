@@ -96,6 +96,22 @@ export class BotService implements OnModuleInit {
     return this.runScanCycle('manual');
   }
 
+  async closePosition(token: string): Promise<{ ok: boolean; message: string }> {
+    const closed = await this.positions.closePositionByToken(token, 'manual');
+    return {
+      ok: closed,
+      message: closed ? `Closed ${token}` : `No open position found for ${token}`,
+    };
+  }
+
+  async closeAllPositions(): Promise<{ ok: boolean; message: string }> {
+    await this.positions.closeAllPositions('manual');
+    return {
+      ok: true,
+      message: 'Close all requested',
+    };
+  }
+
   getRuntimeStatus() {
     return {
       isRunning: this.isRunning,
