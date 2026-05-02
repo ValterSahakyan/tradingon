@@ -125,6 +125,16 @@ export const APP_SETTING_FIELDS: SettingField[] = [
     help: 'Switch between testnet and mainnet on next restart.',
   }),
   field({
+    key: 'hyperliquidMarketOrderSlippage',
+    env: null,
+    path: 'hyperliquid.marketOrderSlippage',
+    type: 'number',
+    label: 'Market Order Slippage',
+    section: 'Exchange',
+    editable: true,
+    help: 'IOC market-order slippage as a decimal fraction. Example: 0.005 = 0.5%, 0.01 = 1%.',
+  }),
+  field({
     key: 'hyperliquidApiUrl',
     env: 'HYPERLIQUID_API_URL',
     path: 'hyperliquid.apiUrl',

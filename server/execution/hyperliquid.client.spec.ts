@@ -1,4 +1,4 @@
-import { describe, expect, it } from '@jest/globals';
+import { describe, expect, it, jest } from '@jest/globals';
 import { HyperliquidClient } from './hyperliquid.client';
 
 describe('HyperliquidClient fmtPrice', () => {
@@ -25,5 +25,35 @@ describe('HyperliquidClient fmtPrice', () => {
     expect(client.fmtPrice(0.290281, 4, 'up')).toBe('0.3');
     expect(client.fmtPrice(0.00123456, 4, 'up')).toBe('0.01');
     expect(client.fmtPrice(0.00123456, 4, 'down')).toBe('0.01');
+  });
+});
+
+describe('HyperliquidClient placeMarketOrder', () => {
+  it('uses configured market-order slippage when building IOC price', async () => {
+    const config = {
+      get: jest.fn((key: string) => {
+        if (key === 'hyperliquid.marketOrderSlippage') return 0.01;
+        return undefined;
+      }),
+    };
+    const client = new HyperliquidClient(config as any) as any;
+
+    client.assets = new Map([
+      ['MAVIA', { index: 110, szDecimals: 2 }],
+    ]);
+    client.ensureReady = jest.fn(async () => true);
+    client.getMidPrice = jest.fn(async () => 100);
+    client.sendOrder = jest.fn(async () => ({ status: 'filled', oid: 1, avgPx: 101, totalSz: 1 }));
+
+    await client.placeMarketOrder('MAVIA', true, 1);
+
+    expect(client.sendOrder).toHaveBeenCalledWith([
+      expect.objectContaining({
+        a: 110,
+        b: true,
+        p: '101.0001',
+        s: '1.00',
+      }),
+    ]);
   });
 });

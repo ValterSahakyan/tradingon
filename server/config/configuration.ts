@@ -10,6 +10,7 @@ export default () => ({
     privateKey: process.env.HYPERLIQUID_PRIVATE_KEY,
     accountAddress: process.env.HYPERLIQUID_ACCOUNT_ADDRESS || null,
     testnet: process.env.HYPERLIQUID_TESTNET === 'true',
+    marketOrderSlippage: 0.005,
     apiUrl:
       process.env.HYPERLIQUID_API_URL ||
       (process.env.HYPERLIQUID_TESTNET === 'true'

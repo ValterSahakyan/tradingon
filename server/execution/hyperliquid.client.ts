@@ -75,7 +75,7 @@ export class HyperliquidClient implements OnModuleInit {
       return null;
     }
 
-    const slippage = 0.005;
+    const slippage = this.config.get<number>('hyperliquid.marketOrderSlippage');
     const limitPx = isBuy ? midPrice * (1 + slippage) : midPrice * (1 - slippage);
 
     const wire: OrderWire = {

@@ -220,6 +220,14 @@ export class AppConfigService implements OnModuleInit {
       if (!/^0x[a-fA-F0-9]{40}$/.test(value.trim())) {
         throw new BadRequestException('Main Account Address must be a valid 0x-prefixed wallet address');
       }
+      return;
+    }
+
+    if (key === 'hyperliquidMarketOrderSlippage') {
+      const numeric = Number(value);
+      if (!Number.isFinite(numeric) || numeric <= 0 || numeric > 0.1) {
+        throw new BadRequestException('Market Order Slippage must be > 0 and <= 0.1');
+      }
     }
   }
 }
