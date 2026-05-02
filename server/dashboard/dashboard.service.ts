@@ -189,19 +189,42 @@ export class DashboardService {
   }
 
   async getPnlChartData() {
-    const cutoff = Date.now() - 7 * 86400_000;
     const trades = await this.tradeRepo
       .createQueryBuilder('t')
-      .where('t.exitTime >= :cutoff', { cutoff })
+      .where('t.exitTime IS NOT NULL')
       .andWhere('t.pnlUsd IS NOT NULL')
       .orderBy('t.exitTime', 'ASC')
+      .limit(200)
       .getMany();
 
     let cumulative = 0;
-    return trades.map((trade) => {
+    const chart = trades.map((trade) => {
       cumulative += +trade.pnlUsd;
       return { time: Number(trade.exitTime), cumPnl: +cumulative.toFixed(4) };
     });
+
+    const openPositions = Array.from(this.positions.getOpenPositions().values());
+    const unrealized = openPositions.reduce(
+      (sum, position) => sum + this.toNumber(position.unrealizedPnl),
+      0,
+    );
+
+    if (chart.length === 0 && openPositions.length > 0) {
+      const firstOpenAt = Math.min(...openPositions.map((position) => Number(position.openTime)));
+      return [
+        { time: firstOpenAt, cumPnl: 0 },
+        { time: Date.now(), cumPnl: +unrealized.toFixed(4) },
+      ];
+    }
+
+    if (chart.length > 0 && openPositions.length > 0) {
+      chart.push({
+        time: Date.now(),
+        cumPnl: +(cumulative + unrealized).toFixed(4),
+      });
+    }
+
+    return chart;
   }
 
   async getConfig() {

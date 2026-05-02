@@ -103,19 +103,27 @@ textarea {
 }
 
 .portfolio-nav {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  min-height: 62px;
-  padding: 0 18px;
+  gap: 14px 18px;
+  min-height: 72px;
+  padding: 14px 18px;
   background: rgba(8, 23, 26, 0.96);
   border: 1px solid var(--line);
-  border-radius: 18px 18px 0 0;
+  border-radius: 18px;
+}
+
+.portfolio-nav-main {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  min-width: 0;
 }
 
 .portfolio-brand {
   display: inline-flex;
+  flex: 0 0 auto;
   align-items: center;
   gap: 12px;
   font-weight: 800;
@@ -146,6 +154,14 @@ textarea {
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
+}
+
+.portfolio-links {
+  min-width: 0;
+}
+
+.portfolio-nav-actions {
+  justify-content: flex-end;
 }
 
 .nav-link {
@@ -187,7 +203,7 @@ textarea {
 }
 
 .wallet-chip--address {
-  max-width: 260px;
+  max-width: min(28vw, 260px);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -201,7 +217,8 @@ textarea {
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  min-width: 0;
 }
 
 .wallet-menu__label {
@@ -210,6 +227,7 @@ textarea {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
+  white-space: nowrap;
 }
 
 .wallet-menu__disconnect {
@@ -218,6 +236,8 @@ textarea {
   border: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.03);
   color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
 }
 
 .portfolio-header {
@@ -1060,8 +1080,29 @@ select:disabled {
   }
 
   .portfolio-nav {
-    border-radius: 18px;
-    padding: 14px;
+    display: flex;
+    gap: 12px;
+  }
+
+  .portfolio-nav-main {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    width: 100%;
+  }
+
+  .portfolio-nav-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .wallet-menu {
+    max-width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .wallet-chip--address {
+    max-width: 100%;
   }
 
   .hero-card,
@@ -1078,5 +1119,19 @@ select:disabled {
 
   .portfolio-chart-metrics {
     gap: 14px;
+  }
+}
+
+@media (max-width: 1180px) {
+  .portfolio-nav {
+    grid-template-columns: 1fr;
+  }
+
+  .portfolio-nav-actions {
+    justify-content: flex-start;
+  }
+
+  .wallet-chip--address {
+    max-width: min(56vw, 320px);
   }
 }

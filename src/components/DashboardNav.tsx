@@ -32,38 +32,42 @@ export default function DashboardNav({
   return (
     <section className="portfolio-hero">
       <div className="portfolio-nav">
-        <div className="portfolio-brand">
-          <span className="brand-mark" />
-          <span>TradingOn</span>
-        </div>
+        <div className="portfolio-nav-main">
+          <div className="portfolio-brand">
+            <span className="brand-mark" />
+            <span>TradingOn</span>
+          </div>
 
-        <div className="portfolio-links">
-          {NAV_ITEMS.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              className={`nav-link ${currentPage === item.id ? 'is-active' : ''}`}
-              onClick={() => onNavigate(item.id)}
-            >
-              {item.label}
-            </button>
-          ))}
+          <div className="portfolio-links">
+            {NAV_ITEMS.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                className={`nav-link ${currentPage === item.id ? 'is-active' : ''}`}
+                onClick={() => onNavigate(item.id)}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className="portfolio-nav-actions">
+          <div className="wallet-chip">
+            {runtime ? runtime.mode.toUpperCase() : 'MODE'} | {status ? status.state.replaceAll('_', ' ') : 'loading'}
+          </div>
           {showWallet && (
             <div className="wallet-menu">
-              <div className="wallet-menu__label">Connected wallet</div>
-              <div className="wallet-chip wallet-chip--address mono">{connectedAddress ?? '-'}</div>
+              <div className="wallet-menu__label">Wallet</div>
+              <div className="wallet-chip wallet-chip--address mono" title={connectedAddress ?? '-'}>
+                {connectedAddress ?? '-'}
+              </div>
               <button type="button" className="wallet-menu__disconnect" onClick={onDisconnect}>
                 Disconnect
               </button>
             </div>
           )}
           <div className="version-chip">v{version}</div>
-          <div className="wallet-chip">
-            {runtime ? runtime.mode.toUpperCase() : 'MODE'} | {status ? status.state.replaceAll('_', ' ') : 'loading'}
-          </div>
         </div>
       </div>
     </section>
