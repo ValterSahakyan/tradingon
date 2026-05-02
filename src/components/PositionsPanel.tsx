@@ -9,7 +9,16 @@ export default function PositionsPanel({ positions }: Props) {
   return (
     <div className="panel">
       <div className="panel-head">
-        <div className="panel-title">Open Positions</div>
+        <div>
+          <div className="portfolio-tabs">
+            <span className="portfolio-tab">Balances ({positions.length})</span>
+            <span className="portfolio-tab is-active">Positions</span>
+            <span className="portfolio-tab">Outcomes</span>
+            <span className="portfolio-tab">Open Orders</span>
+            <span className="portfolio-tab">Trade History</span>
+          </div>
+          <div className="panel-title">Open Positions</div>
+        </div>
         <div className="mini">{positions.length} open</div>
       </div>
 
@@ -35,36 +44,39 @@ function PositionCard({ pos }: { pos: Position }) {
   const pnlColor = pnlNum >= 0 ? 'var(--good)' : 'var(--bad)'
 
   return (
-    <div className={`position ${pos.direction}`}>
-      <div className="position-top">
+    <div className={`position position--row ${pos.direction}`}>
+      <div className="position-row">
         <div>
           <div className="token">{pos.token}</div>
           <div className="mini">
             {pos.direction.toUpperCase()} | Score {pos.score} | {pos.marketCondition}
           </div>
         </div>
-        <div className="mono" style={{ fontSize: 20, color: pnlColor }}>
-          {formatUsd(pnlNum)}
+
+        <div className="position-grid position-grid--portfolio">
+          <DataBox label="Size" value={`${Number(pos.notional).toFixed(2)}`} />
+          <DataBox label="Position Value" value={formatUsd(pos.notional)} />
+          <DataBox label="Entry Price" value={Number(pos.entryPrice).toFixed(6)} />
+          <DataBox label="Mark Price" value={Number(pos.currentPrice).toFixed(6)} />
+          <DataBox label="PnL (ROE %)" value={`${formatUsd(pnlNum)} | ${formatPct(pos.pnlPct)}`} color={pnlColor} />
+          <DataBox label="Liq. Price" value={Number(pos.stopPrice).toFixed(6)} />
+          <DataBox label="Margin" value={Number(pos.margin).toFixed(2)} />
+          <DataBox label="Funding" value={`${pos.leverage}x`} />
         </div>
-      </div>
 
-      <div className="position-grid">
-        <DataBox label="Entry"       value={Number(pos.entryPrice).toFixed(6)} />
-        <DataBox label="Current"     value={Number(pos.currentPrice).toFixed(6)} />
-        <DataBox label="Stop"        value={Number(pos.stopPrice).toFixed(6)} />
-        <DataBox label="PnL %"       value={formatPct(pos.pnlPct)} color={pnlColor} />
-        <DataBox label="Margin"      value={Number(pos.margin).toFixed(2)} />
-        <DataBox label="Notional"    value={Number(pos.notional).toFixed(2)} />
-        <DataBox label="Take Profit" value={Number(pos.tp1Price).toFixed(6)} />
-        <DataBox label="Time Left"   value={`${pos.timeLeftMins}m`} />
-      </div>
-
-      <div className="tags">
-        {pos.patternsFired?.length > 0
-          ? pos.patternsFired.map(id => (
-              <span key={id} className="tag">{PATTERN_NAMES[id] ?? id}</span>
-            ))
-          : <span className="mini">No patterns recorded</span>}
+        <div className="position-side">
+          <div className="mono" style={{ fontSize: 20, color: pnlColor }}>
+            {formatUsd(pnlNum)}
+          </div>
+          <div className="tags tags--compact">
+            {pos.patternsFired?.length > 0
+              ? pos.patternsFired.map(id => (
+                  <span key={id} className="tag">{PATTERN_NAMES[id] ?? id}</span>
+                ))
+              : <span className="mini">No patterns recorded</span>}
+          </div>
+          <div className="mini">TP1 {Number(pos.tp1Price).toFixed(6)} | {pos.timeLeftMins}m left</div>
+        </div>
       </div>
     </div>
   )

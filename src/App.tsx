@@ -9,7 +9,6 @@ import Flash, { type FlashState } from './components/Flash'
 import HeroSection from './components/HeroSection'
 import PositionsPanel from './components/PositionsPanel'
 import SignalsPanel from './components/SignalsPanel'
-import PnlChart from './components/PnlChart'
 import TradesTable from './components/TradesTable'
 import ConfigPanel from './components/ConfigPanel'
 import { useVoiceNotifications } from './hooks/useVoiceNotifications'
@@ -371,10 +370,12 @@ export default function App() {
       <section className="layout">
         <div className="stack">
           <PositionsPanel positions={dashboard?.positions ?? []} />
-          <PnlChart data={dashboard?.pnlChart ?? []} />
-          <TradesTable trades={dashboard?.trades ?? []} />
         </div>
-        <div className="stack">
+        <div className="stack layout layout--secondary">
+          <div className="stack">
+            <TradesTable trades={dashboard?.trades ?? []} />
+          </div>
+          <div className="stack">
           <SignalsPanel
             signals={dashboard?.signals ?? []}
             watchlist={dashboard?.watchlist ?? []}
@@ -387,6 +388,7 @@ export default function App() {
             onSave={handleSaveConfig}
             onReload={loadConfig}
           />
+          </div>
         </div>
       </section>
     </div>

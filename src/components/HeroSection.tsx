@@ -1,5 +1,6 @@
 import type { DashboardData, RuntimeInfo } from '../types'
 import { formatUsd, formatPct, formatTime, timeAgo, statePillClass } from '../utils'
+import PnlChart from './PnlChart'
 
 interface Props {
   dashboard: DashboardData | null
@@ -14,7 +15,18 @@ interface Props {
   onResume: () => void
 }
 
-export default function HeroSection({ dashboard, runtime, balance, busy, voiceEnabled, lastEvent, onVoiceToggle, onScan, onPause, onResume }: Props) {
+export default function HeroSection({
+  dashboard,
+  runtime,
+  balance,
+  busy,
+  voiceEnabled,
+  lastEvent,
+  onVoiceToggle,
+  onScan,
+  onPause,
+  onResume,
+}: Props) {
   const status = dashboard?.status
   const stats = dashboard?.stats
   const appVersion = dashboard?.meta?.version ?? '-'
@@ -32,26 +44,79 @@ export default function HeroSection({ dashboard, runtime, balance, busy, voiceEn
     balance == null
       ? 'Loading...'
       : balance.needsAccountAddress && zeroOrNull
-        ? 'Set Main Account Address in Config → Exchange'
+        ? 'Set Main Account Address in Config -> Exchange'
         : balance.spotBalance != null && balance.spotBalance > 0 && zeroOrNull
-          ? `Spot: $${Number(balance.spotBalance).toFixed(2)} - transfer to perp account`
+          ? `Spot: $${Number(balance.spotBalance).toFixed(2)} -> transfer to perp account`
           : balance.updatedAt
             ? `Updated ${timeAgo(balance.updatedAt)}`
             : 'Unavailable - check Hyperliquid private key and account address'
 
   return (
-    <section className="hero">
-      <div className="hero-card">
-        <div className="hero-topline">
-          <div className="kicker">Trading Operations</div>
-          <div className="version-chip">v{appVersion}</div>
+    <section className="portfolio-hero">
+      <div className="portfolio-nav">
+        <div className="portfolio-brand">
+          <span className="brand-mark" />
+          <span>TradingOn</span>
         </div>
-        <h1>TradingOn Bot Console</h1>
-        <p>Live bot state, open positions, signals, trade performance, and strategy settings.</p>
 
-        <div className="hero-grid">
-          <div className="metric">
-            <div className="metric-label">Bot State</div>
+        <div className="portfolio-links">
+          <button type="button" className="nav-link">Trade</button>
+          <button type="button" className="nav-link is-active">Portfolio</button>
+          <button type="button" className="nav-link">Signals</button>
+          <button type="button" className="nav-link">Config</button>
+          <button type="button" className="nav-link">History</button>
+        </div>
+
+        <div className="portfolio-nav-actions">
+          <div className="version-chip">v{appVersion}</div>
+          <div className="wallet-chip">
+            {runtime ? runtime.mode.toUpperCase() : 'MODE'} · {status ? status.state.replaceAll('_', ' ') : 'loading'}
+          </div>
+        </div>
+      </div>
+
+      <div className="portfolio-header">
+        <div>
+          <div className="kicker">Portfolio</div>
+          <h1>TradingOn Portfolio</h1>
+          <p>Bot state, account health, active exposure, recent signals, and operator controls.</p>
+        </div>
+
+        <div className="portfolio-actions">
+          <button className="action-chip" disabled={busy} onClick={onScan}>Run Scan</button>
+          <button className="action-chip" disabled={busy} onClick={onResume}>Resume</button>
+          <button className="action-chip action-chip--danger" disabled={busy} onClick={onPause}>Pause 2h</button>
+          <button
+            className={`action-chip action-chip--toggle ${voiceEnabled ? 'is-on' : ''}`}
+            onClick={onVoiceToggle}
+            aria-pressed={voiceEnabled}
+            title={voiceEnabled ? 'Click to mute' : 'Click to enable voice'}
+          >
+            {voiceEnabled ? 'Voice On' : 'Voice Off'}
+          </button>
+        </div>
+      </div>
+
+      <div className="hero">
+        <div className="hero-side">
+          <div className="hero-card hero-card--compact">
+            <div className="metric-label">Account Value</div>
+            <div className="metric-value mono" style={{ color: balanceColor }}>
+              {balance?.perpBalance != null ? `$${Number(balance.perpBalance).toFixed(2)}` : '-'}
+            </div>
+            <div className="metric-sub">{balanceSubtext}</div>
+            <div className="metric-link">
+              {status?.accountValueAt ? `Synced ${timeAgo(status.accountValueAt)}` : 'Balance feed'}
+            </div>
+          </div>
+
+          <div className="hero-card hero-card--compact">
+            <div className="panel-head">
+              <div className="metric-label">Runtime</div>
+              <span className={`pill ${runtime?.isRunning ? 'warn' : 'neutral'}`}>
+                {runtime?.isRunning ? 'Scanning' : runtime ? `Every ${runtime.scanIntervalSeconds}s` : 'Loading'}
+              </span>
+            </div>
             <div className="metric-value">{status ? status.state.replaceAll('_', ' ') : '-'}</div>
             <div className="metric-sub">
               {status?.pauseReason
@@ -60,119 +125,77 @@ export default function HeroSection({ dashboard, runtime, balance, busy, voiceEn
                   ? `Paused until ${formatTime(status.pauseUntil)}`
                   : 'Trading gate clear'}
             </div>
-          </div>
-
-          <div className="metric">
-            <div className="metric-label">Market</div>
-            <div className="metric-value">{status?.marketCondition ?? '-'}</div>
-            <div className="metric-sub">
-              {status
-                ? `SOL 1h ${formatPct(status.marketMoves.sol1h)} | BTC 4h ${formatPct(status.marketMoves.btc4h)}`
-                : '-'}
-            </div>
-          </div>
-
-          <div className="metric">
-            <div className="metric-label">Today PnL</div>
-            <div className="metric-value mono" style={{ color: pnlColor }}>
-              {stats ? formatUsd(stats.todayPnl) : '-'}
-            </div>
-            <div className="metric-sub">
-              {stats
-                ? `Week ${formatUsd(stats.weekPnl)} | Win rate ${Number(stats.winRatePct ?? 0).toFixed(1)}%`
-                : '-'}
-            </div>
-          </div>
-
-          <div className="metric">
-            <div className="metric-label">Balance</div>
-            <div className="metric-value mono" style={{ color: balanceColor }}>
-              {balance?.perpBalance != null ? `$${Number(balance.perpBalance).toFixed(2)}` : '-'}
-            </div>
-            <div className="metric-sub">{balanceSubtext}</div>
-          </div>
-
-          <div className="metric">
-            <div className="metric-label">Coverage</div>
-            <div className="metric-value mono">
-              {status ? `${status.openPositions}/${status.maxPositions}` : '-'}
-            </div>
-            <div className="metric-sub">
-              {status
-                ? `${status.trackedTokens} tracked | ${status.scanDiagnostics?.candidatesFound ?? 0} watchlist | ${status.scanDiagnostics?.signalsFound ?? 0} signals`
-                : '-'}
+            <div className="metric-link">
+              {runtime?.lastScanAt ? `Last scan ${timeAgo(runtime.lastScanAt)}` : 'No scan recorded'}
             </div>
           </div>
         </div>
-      </div>
 
-      <div className="hero-card status-stack">
-        <div className="status-row">
-          <div>
-            <div className="mini">Runtime</div>
-            <strong>{runtime ? runtime.mode.toUpperCase() : '-'}</strong>
+        <div className="hero-card">
+          <div className="panel-head">
+            <div>
+              <div className="panel-title">Perps + Spot + Signals</div>
+              <div className="mini">30D snapshot</div>
+            </div>
+            {status && (
+              <span className={`pill ${statePillClass(status.state)}`}>
+                {status.marketCondition}
+              </span>
+            )}
           </div>
-          <span className={`pill ${runtime?.isRunning ? 'warn' : 'neutral'}`}>
-            {runtime?.isRunning ? 'Scan Running' : runtime ? `Every ${runtime.scanIntervalSeconds}s` : 'Loading'}
-          </span>
-        </div>
 
-        <div className="status-row">
-          <div>
-            <div className="mini">Last Scan</div>
-            <strong>{runtime?.lastScanAt ? timeAgo(runtime.lastScanAt) : 'No scan recorded'}</strong>
-          </div>
-          {runtime?.lastScanResult ? (
-            <span className={`pill ${runtime.lastScanResult.ok ? 'good' : 'bad'}`}>
-              {runtime.lastScanResult.message}
-            </span>
-          ) : (
-            <span className="pill neutral">No data</span>
-          )}
-        </div>
+          <div className="hero-grid hero-grid--portfolio">
+            <div className="metric">
+              <div className="metric-label">Today PnL</div>
+              <div className="metric-value mono" style={{ color: pnlColor }}>
+                {stats ? formatUsd(stats.todayPnl) : '-'}
+              </div>
+              <div className="metric-sub">{stats ? `Week ${formatUsd(stats.weekPnl)}` : '-'}</div>
+            </div>
 
-        <div className="status-row">
-          <div>
-            <div className="mini">State</div>
-            <strong>{status ? status.state.replaceAll('_', ' ') : '-'}</strong>
-          </div>
-          {status && (
-            <span className={`pill ${statePillClass(status.state)}`}>
-              {status.state.replaceAll('_', ' ')}
-            </span>
-          )}
-        </div>
+            <div className="metric">
+              <div className="metric-label">Volume Coverage</div>
+              <div className="metric-value mono">
+                {status ? `${status.openPositions}/${status.maxPositions}` : '-'}
+              </div>
+              <div className="metric-sub">
+                {status ? `${status.trackedTokens} tracked tokens` : '-'}
+              </div>
+            </div>
 
-        <div className="status-row" style={{ flexWrap: 'wrap' }}>
-          <div>
-            <div className="mini">Controls</div>
-            <strong>Manual actions</strong>
-          </div>
-          <div className="actions">
-            <button className="btn-primary" disabled={busy} onClick={onScan}>Run Scan</button>
-            <button className="btn-danger" disabled={busy} onClick={onPause}>Pause 2h</button>
-            <button className="btn-secondary" disabled={busy} onClick={onResume}>Resume</button>
-          </div>
-        </div>
+            <div className="metric">
+              <div className="metric-label">Win Rate</div>
+              <div className="metric-value mono">
+                {stats ? `${Number(stats.winRatePct ?? 0).toFixed(1)}%` : '-'}
+              </div>
+              <div className="metric-sub">
+                {status
+                  ? `${status.scanDiagnostics?.signalsFound ?? 0} signals | ${status.scanDiagnostics?.candidatesFound ?? 0} watchlist`
+                  : '-'}
+              </div>
+            </div>
 
-        <div className="status-row voice-row">
-          <div className="voice-info">
-            <div className="mini">Voice Alerts</div>
-            <div className="voice-last">{lastEvent ?? 'No events yet'}</div>
+            <div className="metric">
+              <div className="metric-label">Market</div>
+              <div className="metric-value">{status?.marketCondition ?? '-'}</div>
+              <div className="metric-sub">
+                {status
+                  ? `SOL 1h ${formatPct(status.marketMoves.sol1h)} | BTC 4h ${formatPct(status.marketMoves.btc4h)}`
+                  : '-'}
+              </div>
+            </div>
           </div>
-          <button
-            className={`voice-toggle ${voiceEnabled ? 'voice-toggle--on' : ''}`}
-            onClick={onVoiceToggle}
-            aria-pressed={voiceEnabled}
-            title={voiceEnabled ? 'Click to mute' : 'Click to enable voice'}
-          >
-            <span className="voice-toggle__track">
-              <span className="voice-toggle__thumb" />
-            </span>
-            <span className="voice-toggle__label">
-              {voiceEnabled ? <><span className="voice-dot" />ON</> : 'OFF'}
-            </span>
-          </button>
+
+          <div className="hero-chart-head">
+            <div className="chart-tabs">
+              <span className="chart-tab">Account Value</span>
+              <span className="chart-tab is-active">PNL</span>
+              <span className="chart-tab">Perps PNL</span>
+            </div>
+            <div className="mini">{lastEvent ?? 'No voice events yet'}</div>
+          </div>
+
+          <PnlChart data={dashboard?.pnlChart ?? []} embedded />
         </div>
       </div>
     </section>

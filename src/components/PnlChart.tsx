@@ -2,15 +2,18 @@ import type { PnlPoint } from '../types'
 
 interface Props {
   data: PnlPoint[]
+  embedded?: boolean
 }
 
-export default function PnlChart({ data }: Props) {
+export default function PnlChart({ data, embedded = false }: Props) {
   return (
-    <div className="panel">
-      <div className="panel-head">
-        <div className="panel-title">PnL Curve</div>
-        <div className="mini">Last 7 days</div>
-      </div>
+    <div className={embedded ? 'chart-panel chart-panel--embedded' : 'panel'}>
+      {!embedded && (
+        <div className="panel-head">
+          <div className="panel-title">PnL Curve</div>
+          <div className="mini">Last 7 days</div>
+        </div>
+      )}
 
       {!data.length ? (
         <div className="empty-state">
@@ -21,7 +24,7 @@ export default function PnlChart({ data }: Props) {
           <p>Insufficient performance history to map curve</p>
         </div>
       ) : (
-        <div className="chart">
+        <div className={`chart ${embedded ? 'chart--embedded' : ''}`}>
           <ChartSvg data={data} />
         </div>
       )}
