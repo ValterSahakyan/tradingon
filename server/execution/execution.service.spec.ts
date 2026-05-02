@@ -22,7 +22,7 @@ describe('ExecutionService', () => {
     };
 
     hl = {
-      setLeverage: (jest.fn(() => Promise.resolve(undefined)) as any),
+      setLeverage: (jest.fn(() => Promise.resolve(true)) as any),
       placeMarketOrder: jest.fn() as any,
       getMidPrice: jest.fn() as any,
       getAccountValue: jest.fn() as any,
@@ -125,6 +125,28 @@ describe('ExecutionService', () => {
     expect(result).not.toBeNull();
     expect(result?.margin).toBe(2);
     expect(result?.notional).toBe(10);
+  });
+
+  it('refuses to open positions when isolated leverage setup fails', async () => {
+    hl.setLeverage.mockResolvedValue(false);
+
+    const result = await service.openPosition({
+      token: 'SOL',
+      direction: 'long',
+      score: 2,
+      patternsFired: ['volume_spike'],
+      currentPrice: 10,
+      suggestedMargin: 10,
+      notional: 30,
+      stopPrice: 9.3,
+      tp1Price: 10.7,
+      tp2Price: 11.4,
+      marketCondition: 'sideways',
+    });
+
+    expect(result).toBeNull();
+    expect(hl.setLeverage).toHaveBeenCalledWith('SOL', 3);
+    expect(hl.placeMarketOrder).not.toHaveBeenCalled();
   });
 
   it('refuses to open positions on mainnet when second safety gate is off', async () => {
