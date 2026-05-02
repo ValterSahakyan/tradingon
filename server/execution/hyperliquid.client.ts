@@ -79,7 +79,7 @@ export class HyperliquidClient implements OnModuleInit {
     const wire: OrderWire = {
       a: asset.index,
       b: isBuy,
-      p: this.fmtPrice(limitPx),
+      p: this.fmtPrice(limitPx, asset.szDecimals),
       s: this.fmtSize(sz, asset.szDecimals),
       r: reduceOnly,
       t: { limit: { tif: 'Ioc' } },
@@ -105,7 +105,7 @@ export class HyperliquidClient implements OnModuleInit {
     const wire: OrderWire = {
       a: asset.index,
       b: isBuy,
-      p: this.fmtPrice(limitPx),
+      p: this.fmtPrice(limitPx, asset.szDecimals),
       s: this.fmtSize(sz, asset.szDecimals),
       r: reduceOnly,
       t: { limit: { tif } },
@@ -699,18 +699,19 @@ export class HyperliquidClient implements OnModuleInit {
     return this.http !== null && this.wallet !== null && this.assets.size > 0;
   }
 
-  fmtPrice(price: number): string {
+  fmtPrice(price: number, szDecimals = 4): string {
     if (price === 0) {
       return '0';
     }
 
+    const maxDecimals = Math.max(0, 6 - szDecimals);
     const sig = parseFloat(price.toPrecision(5));
-    if (sig.toString().includes('e')) {
-      const str = sig.toFixed(20);
-      return str.replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '.0');
-    }
+    const scaled = maxDecimals > 0
+      ? Math.round(sig * 10 ** maxDecimals) / 10 ** maxDecimals
+      : Math.round(sig);
+    const str = maxDecimals > 0 ? scaled.toFixed(maxDecimals) : String(Math.round(scaled));
 
-    return sig.toString();
+    return str.replace(/(\.\d*?[1-9])0+$/, '$1').replace(/\.0+$/, '').replace(/\.$/, '');
   }
 
   fmtSize(sz: number, szDecimals: number): string {
