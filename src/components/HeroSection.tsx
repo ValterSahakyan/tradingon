@@ -8,6 +8,7 @@ interface Props {
   balance: { perpBalance: number | null; spotBalance: number | null; updatedAt: number | null; needsAccountAddress: boolean } | null
   busy: boolean
   voiceEnabled: boolean
+  voiceSupported: boolean
   lastEvent: string | null
   onVoiceToggle: () => void
   onScan: () => void
@@ -21,6 +22,7 @@ export default function HeroSection({
   balance,
   busy,
   voiceEnabled,
+  voiceSupported,
   lastEvent,
   onVoiceToggle,
   onScan,
@@ -72,12 +74,25 @@ export default function HeroSection({
           <button className="action-chip" disabled={busy} onClick={onResume}>Resume</button>
           <button className="action-chip action-chip--danger" disabled={busy} onClick={onPause}>Pause 2h</button>
           <button
-            className={`action-chip action-chip--toggle ${voiceEnabled ? 'is-on' : ''}`}
+            className={`voice-toggle ${voiceEnabled ? 'voice-toggle--on' : ''}`}
             onClick={onVoiceToggle}
             aria-pressed={voiceEnabled}
-            title={voiceEnabled ? 'Click to mute' : 'Click to enable voice'}
+            title={
+              !voiceSupported
+                ? 'Voice notifications are not supported in this browser'
+                : voiceEnabled
+                  ? 'Turn voice alerts off'
+                  : 'Turn voice alerts on'
+            }
+            disabled={!voiceSupported}
           >
-            {voiceEnabled ? 'Voice On' : 'Voice Off'}
+            <span className="voice-toggle__track" aria-hidden="true">
+              <span className="voice-toggle__thumb" />
+            </span>
+            <span className="voice-toggle__label">
+              {voiceEnabled && <span className="voice-dot" aria-hidden="true" />}
+              {voiceSupported ? (voiceEnabled ? 'Voice On' : 'Voice Off') : 'Voice Unsupported'}
+            </span>
           </button>
         </div>
       </div>

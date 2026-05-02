@@ -38,7 +38,7 @@ export class MarketDataService implements OnModuleInit {
   }
 
   getTrackedTokens(): string[] {
-    return this.trackedTokens;
+    return [...this.trackedTokens];
   }
 
   getCandles(token: string): Candle[] {
@@ -114,8 +114,13 @@ export class MarketDataService implements OnModuleInit {
       });
 
       const tokens: string[] = [];
+      const seen = new Set<string>();
       for (const asset of rankedTokens) {
         const name = asset.name;
+        if (!name || seen.has(name)) {
+          continue;
+        }
+        seen.add(name);
         this.tokenMeta.set(name, {
           name,
           marketCap: minMarketCap + 1,

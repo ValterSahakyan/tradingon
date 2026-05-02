@@ -69,7 +69,7 @@ export default function App() {
   const configSaveInFlightRef = useRef(false)
   const voiceToggleInFlightRef = useRef(false)
 
-  const { lastEvent } = useVoiceNotifications(dashboard, voiceEnabled)
+  const { lastEvent, voiceSupported } = useVoiceNotifications(dashboard, voiceEnabled)
 
   const showFlash = useCallback((message: string, kind: 'good' | 'bad' = 'good') => {
     setFlash({ message, kind, id: Date.now() })
@@ -118,12 +118,10 @@ export default function App() {
   const loadDashboard = useCallback(async () => {
     void fetchBalance()
       .then((value) => {
-        console.log('[balance] fetched:', value)
         setBalance(value)
       })
-      .catch((err) => {
-        console.error('[balance] fetch failed:', err)
-        showFlash(`Balance load failed: ${(err as Error).message}`, 'bad')
+      .catch(() => {
+        // Keep the last known balance on transient backend errors instead of flashing the UI every poll.
       })
 
     const results = await Promise.allSettled([fetchDashboard(), fetchRuntime()])
@@ -393,6 +391,7 @@ export default function App() {
           balance={balance}
           busy={busy}
           voiceEnabled={voiceEnabled}
+          voiceSupported={voiceSupported}
           lastEvent={lastEvent}
           onVoiceToggle={handleVoiceToggle}
           onScan={() => handleBotAction('/api/bot/scan', 'Manual scan requested.', {})}

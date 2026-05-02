@@ -14,14 +14,20 @@ function formatExitReason(reason: string): string {
   }
 }
 
-function speak(text: string) {
-  if (!('speechSynthesis' in window)) return
+function canSpeak(): boolean {
+  return typeof window !== 'undefined' && 'speechSynthesis' in window
+}
+
+function speakBatch(messages: string[]) {
+  if (!canSpeak() || messages.length === 0) return
   window.speechSynthesis.cancel()
+  for (const text of messages) {
   const utterance = new SpeechSynthesisUtterance(text)
   utterance.rate = 0.92
   utterance.pitch = 1.05
   utterance.volume = 1
   window.speechSynthesis.speak(utterance)
+  }
 }
 
 export function useVoiceNotifications(dashboard: DashboardData | null, enabled: boolean) {
@@ -29,6 +35,22 @@ export function useVoiceNotifications(dashboard: DashboardData | null, enabled: 
   const seenTradeIds = useRef<Set<string>>(new Set())
   const initialized = useRef(false)
   const [lastEvent, setLastEvent] = useState<string | null>(null)
+  const [voiceSupported] = useState(canSpeak())
+
+  useEffect(() => {
+    if (!voiceSupported || enabled) {
+      return
+    }
+    window.speechSynthesis.cancel()
+  }, [enabled, voiceSupported])
+
+  useEffect(() => {
+    return () => {
+      if (voiceSupported) {
+        window.speechSynthesis.cancel()
+      }
+    }
+  }, [voiceSupported])
 
   useEffect(() => {
     if (!dashboard) return
@@ -71,14 +93,22 @@ export function useVoiceNotifications(dashboard: DashboardData | null, enabled: 
 
     if (!enabled) return
 
-    for (const message of newOpens) {
-      const parts = message.split(' opened')
-      speak(`${parts[0]} opened.`)
-    }
-    for (const message of newCloses) {
-      speak(message.replace(' - ', '. ').replace(/\+|\-/, (match) => (match === '+' ? 'profit ' : 'loss ')).replace('$', '').replace(/(\d+\.\d+)/, '$1 dollars'))
-    }
+    const spokenMessages = [
+      ...newOpens.map((message) => {
+        const parts = message.split(' opened')
+        return `${parts[0]} opened.`
+      }),
+      ...newCloses.map((message) =>
+        message
+          .replace(' - ', '. ')
+          .replace(/\+|\-/, (match) => (match === '+' ? 'profit ' : 'loss '))
+          .replace('$', '')
+          .replace(/(\d+\.\d+)/, '$1 dollars'),
+      ),
+    ]
+
+    speakBatch(spokenMessages)
   }, [dashboard, enabled])
 
-  return { lastEvent }
+  return { lastEvent, voiceSupported }
 }

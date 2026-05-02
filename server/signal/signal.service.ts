@@ -35,7 +35,7 @@ export class SignalService {
   ) {}
 
   async scanAll(openTokens: Set<string>): Promise<TradeSignal[]> {
-    const tokens = this.marketData.getTrackedTokens();
+    const tokens = Array.from(new Set(this.marketData.getTrackedTokens()));
     const diagnostics = this.createDiagnostics();
     const signals: TradeSignal[] = [];
     const candidates: ScanCandidate[] = [];
@@ -74,12 +74,18 @@ export class SignalService {
     diagnostics.signalsFound = signals.length;
     diagnostics.candidatesFound = candidates.length;
     diagnostics.finishedAt = Date.now();
-    this.lastCandidates = candidates
+    this.lastCandidates = this.dedupeCandidates(candidates)
       .sort((left, right) => {
         if (Number(right.tradable) !== Number(left.tradable)) {
           return Number(right.tradable) - Number(left.tradable);
         }
-        return right.score - left.score;
+        if (right.score !== left.score) {
+          return right.score - left.score;
+        }
+        if (right.timestamp !== left.timestamp) {
+          return right.timestamp - left.timestamp;
+        }
+        return left.token.localeCompare(right.token);
       })
       .slice(0, 20);
     this.lastDiagnostics = diagnostics;
@@ -440,5 +446,29 @@ export class SignalService {
       default:
         return reason.replaceAll('_', ' ');
     }
+  }
+
+  private dedupeCandidates(candidates: ScanCandidate[]): ScanCandidate[] {
+    const byKey = new Map<string, ScanCandidate>();
+
+    for (const candidate of candidates) {
+      const key = `${candidate.token}:${candidate.direction ?? 'watch'}`;
+      const existing = byKey.get(key);
+      if (!existing) {
+        byKey.set(key, candidate);
+        continue;
+      }
+
+      const shouldReplace =
+        Number(candidate.tradable) > Number(existing.tradable)
+        || candidate.score > existing.score
+        || candidate.timestamp > existing.timestamp;
+
+      if (shouldReplace) {
+        byKey.set(key, candidate);
+      }
+    }
+
+    return Array.from(byKey.values());
   }
 }

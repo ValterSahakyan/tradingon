@@ -22,12 +22,23 @@ async function getJson<T>(url: string, options?: RequestInit): Promise<T> {
   })
   if (!res.ok) {
     const text = await res.text()
-    let parsed: any
-    try { parsed = JSON.parse(text) } catch {}
+    const parsed = parseErrorPayload(text)
     const msg = parsed?.message || parsed?.error || text || `HTTP ${res.status}`
     throw new ApiError(res.status, typeof msg === 'string' ? msg : JSON.stringify(msg))
   }
   return res.json() as Promise<T>
+}
+
+function parseErrorPayload(text: string): { message?: unknown; error?: unknown } | null {
+  try {
+    const parsed: unknown = JSON.parse(text)
+    if (parsed && typeof parsed === 'object') {
+      return parsed as { message?: unknown; error?: unknown }
+    }
+    return null
+  } catch {
+    return null
+  }
 }
 
 export const fetchSession = () => getJson<AuthSession>('/api/auth/session')
