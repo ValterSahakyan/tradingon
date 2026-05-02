@@ -10,7 +10,7 @@ import { RiskService } from '../risk/risk.service';
 import { LoggingService } from '../logging/logging.service';
 import { ExecutionService } from '../execution/execution.service';
 import { TradeLog } from '../logging/entities/trade-log.entity';
-import { TradeSignal } from '../common/types';
+import { OpenPosition, TradeSignal } from '../common/types';
 import { SettingField } from '../config/app-settings.definitions';
 import { repoRoot } from '../config/paths';
 import { SignalService } from '../signal/signal.service';
@@ -204,24 +204,41 @@ export class DashboardService {
       order: { createdAt: 'DESC' },
       take: 30,
     });
+    const openPositions = Array.from(this.positions.getOpenPositions().values());
+    const matchedPositionIds = new Set<string>();
 
-    return trades.map((trade) => ({
-      id: trade.id,
-      token: trade.token,
-      direction: trade.direction,
-      entryPrice: this.toNumber(trade.entryPrice),
-      exitPrice: trade.exitPrice == null ? null : this.toNumber(trade.exitPrice),
-      pnlUsd: trade.pnlUsd == null ? null : this.toNumber(trade.pnlUsd),
-      pnlPercent: trade.pnlPercent == null ? null : this.toNumber(trade.pnlPercent),
-      exitReason: trade.exitReason,
-      patternsFired: trade.patternsFired,
-      score: trade.score,
-      durationMinutes: trade.durationMinutes,
-      tp1Hit: trade.tp1Hit,
-      tp2Hit: trade.tp2Hit,
-      entryTime: trade.entryTime,
-      exitTime: trade.exitTime,
-    }));
+    return trades.map((trade) => {
+      const livePosition =
+        trade.exitTime == null
+          ? this.findMatchingOpenPosition(trade, openPositions, matchedPositionIds)
+          : null;
+      const livePnlUsd = livePosition ? +this.toNumber(livePosition.unrealizedPnl).toFixed(4) : null;
+      const notional = livePosition ? this.toNumber(livePosition.notional) : this.toNumber(trade.notional);
+      const livePnlPercent = livePnlUsd != null && notional > 0
+        ? +((livePnlUsd / notional) * 100).toFixed(4)
+        : null;
+      const liveDurationMinutes = trade.exitTime == null
+        ? Math.max(0, Math.round((Date.now() - Number(trade.entryTime)) / 60_000))
+        : null;
+
+      return {
+        id: trade.id,
+        token: trade.token,
+        direction: trade.direction,
+        entryPrice: this.toNumber(trade.entryPrice),
+        exitPrice: trade.exitPrice == null ? null : this.toNumber(trade.exitPrice),
+        pnlUsd: trade.pnlUsd == null ? livePnlUsd : this.toNumber(trade.pnlUsd),
+        pnlPercent: trade.pnlPercent == null ? livePnlPercent : this.toNumber(trade.pnlPercent),
+        exitReason: trade.exitReason,
+        patternsFired: trade.patternsFired,
+        score: trade.score,
+        durationMinutes: trade.durationMinutes ?? liveDurationMinutes,
+        tp1Hit: trade.tp1Hit,
+        tp2Hit: trade.tp2Hit,
+        entryTime: trade.entryTime,
+        exitTime: trade.exitTime,
+      };
+    });
   }
 
   async getPnlChartData() {
@@ -415,5 +432,32 @@ export class DashboardService {
       .map(([time, pnl]) => [Number(time), this.toNumber(pnl)] as [number, number])
       .filter(([time]) => Number.isFinite(time))
       .sort((left, right) => left[0] - right[0]);
+  }
+
+  private findMatchingOpenPosition(
+    trade: TradeLog,
+    openPositions: OpenPosition[],
+    matchedPositionIds: Set<string>,
+  ): OpenPosition | null {
+    const candidates = openPositions
+      .filter((position) => !matchedPositionIds.has(position.id))
+      .filter((position) => position.token === trade.token && position.direction === trade.direction);
+
+    if (candidates.length === 0) {
+      return null;
+    }
+
+    const bestMatch = candidates.sort((left, right) => {
+      const leftDistance = Math.abs(Number(left.openTime) - Number(trade.entryTime));
+      const rightDistance = Math.abs(Number(right.openTime) - Number(trade.entryTime));
+      return leftDistance - rightDistance;
+    })[0];
+
+    if (!bestMatch) {
+      return null;
+    }
+
+    matchedPositionIds.add(bestMatch.id);
+    return bestMatch;
   }
 }

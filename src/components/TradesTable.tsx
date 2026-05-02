@@ -50,8 +50,8 @@ export default function TradesTable({ trades }: Props) {
             </thead>
             <tbody>
               {visibleTrades.map((trade, index) => {
-                const pnl = Number(trade.pnlUsd ?? 0)
-                const pnlColor = pnl >= 0 ? 'var(--good)' : 'var(--bad)'
+                const pnl = trade.pnlUsd == null ? null : Number(trade.pnlUsd)
+                const pnlColor = pnl == null ? 'var(--muted)' : pnl >= 0 ? 'var(--good)' : 'var(--bad)'
                 return (
                   <tr key={`${trade.id}-${startIndex + index}`}>
                     <td className="mono">{trade.token}</td>
@@ -60,7 +60,9 @@ export default function TradesTable({ trades }: Props) {
                     <td className="mono">
                       {trade.exitPrice == null ? '-' : Number(trade.exitPrice).toFixed(6)}
                     </td>
-                    <td className="mono" style={{ color: pnlColor }}>{formatUsd(pnl)}</td>
+                    <td className="mono" style={{ color: pnlColor }}>
+                      {pnl == null ? '-' : formatUsd(pnl)}
+                    </td>
                     <td>{trade.exitReason ?? '-'}</td>
                     <td>{trade.score}/4</td>
                     <td>{trade.durationMinutes == null ? '-' : `${trade.durationMinutes}m`}</td>

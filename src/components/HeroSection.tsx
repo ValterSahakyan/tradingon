@@ -271,8 +271,11 @@ export default function HeroSection({
                     <strong>{trade.token}</strong>
                     <div className="mini">{trade.direction.toUpperCase()} · {trade.exitReason ?? 'Closed'}</div>
                   </div>
-                  <div className="portfolio-mini-row__value" style={{ color: Number(trade.pnlUsd ?? 0) >= 0 ? 'var(--good)' : 'var(--bad)' }}>
-                    {formatUsd(Number(trade.pnlUsd ?? 0))}
+                  <div
+                    className="portfolio-mini-row__value"
+                    style={{ color: trade.pnlUsd == null ? 'var(--muted)' : Number(trade.pnlUsd) >= 0 ? 'var(--good)' : 'var(--bad)' }}
+                  >
+                    {trade.pnlUsd == null ? '-' : formatUsd(Number(trade.pnlUsd))}
                   </div>
                 </div>
               ))
