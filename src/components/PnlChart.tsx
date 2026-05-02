@@ -1,3 +1,5 @@
+import { useEffect, useMemo, useRef } from 'react'
+import { AreaSeries, ColorType, LineStyle, createChart, type UTCTimestamp } from 'lightweight-charts'
 import type { PnlPoint } from '../types'
 import { formatUsd } from '../utils'
 
@@ -7,16 +9,18 @@ interface Props {
 }
 
 export default function PnlChart({ data, embedded = false }: Props) {
+  const normalizedData = useMemo(() => normalizeSeries(data), [data])
+
   return (
     <div className={embedded ? 'chart-panel chart-panel--embedded' : 'panel'}>
       {!embedded && (
         <div className="panel-head">
           <div className="panel-title">PnL Curve</div>
-          <div className="mini">Last 7 days</div>
+          <div className="mini">Realized history with live open-position impact</div>
         </div>
       )}
 
-      {!data.length ? (
+      {!normalizedData.length ? (
         <div className="empty-state">
           <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M3 3v18h18"/>
@@ -26,135 +30,98 @@ export default function PnlChart({ data, embedded = false }: Props) {
         </div>
       ) : (
         <div className={`chart ${embedded ? 'chart--embedded' : ''}`}>
-          <ChartSvg data={data} />
+          <ChartCanvas data={normalizedData} />
         </div>
       )}
     </div>
   )
 }
 
-function ChartSvg({ data }: { data: PnlPoint[] }) {
-  if (!data.length) return null
+function ChartCanvas({ data }: { data: Array<{ time: UTCTimestamp; value: number }> }) {
+  const hostRef = useRef<HTMLDivElement | null>(null)
 
-  const width = 100
-  const height = 100
-  const left = 8
-  const right = 4
-  const top = 8
-  const bottom = 12
-  const plotWidth = width - left - right
-  const plotHeight = height - top - bottom
+  useEffect(() => {
+    const host = hostRef.current
+    if (!host) return
 
-  const values = data.map((point) => Number(point.cumPnl))
-  const times = data.map((point) => Number(point.time))
-  const dataMin = Math.min(...values)
-  const dataMax = Math.max(...values)
-  const valuePadding = Math.max(0.5, Math.abs(dataMax - dataMin) * 0.15)
-  const min = Math.min(dataMin, 0) - valuePadding
-  const max = Math.max(dataMax, 0) + valuePadding
-  const range = max - min || 1
-  const minTime = Math.min(...times)
-  const maxTime = Math.max(...times)
-  const timeRange = maxTime - minTime || 1
-  const finalValue = values[values.length - 1]
-  const stroke = finalValue >= 0 ? '#3ee0bb' : '#ff7c87'
+    const stroke = data[data.length - 1]?.value >= 0 ? '#41dbc3' : '#ff7c87'
+    const chart = createChart(host, {
+      autoSize: true,
+      layout: {
+        background: { type: ColorType.Solid, color: 'transparent' },
+        textColor: '#88ada8',
+        fontFamily: 'Manrope, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif',
+      },
+      grid: {
+        vertLines: { color: 'rgba(111, 183, 171, 0.08)' },
+        horzLines: { color: 'rgba(111, 183, 171, 0.14)', style: LineStyle.LargeDashed },
+      },
+      crosshair: {
+        vertLine: { color: 'rgba(89, 223, 207, 0.28)', labelBackgroundColor: '#0f2f32' },
+        horzLine: { color: 'rgba(89, 223, 207, 0.22)', labelBackgroundColor: '#0f2f32' },
+      },
+      rightPriceScale: {
+        borderColor: 'rgba(111, 183, 171, 0.16)',
+        scaleMargins: { top: 0.14, bottom: 0.16 },
+      },
+      timeScale: {
+        borderColor: 'rgba(111, 183, 171, 0.16)',
+        timeVisible: true,
+        secondsVisible: false,
+      },
+      localization: {
+        priceFormatter: (value: number) => formatUsd(value).replace('.00', ''),
+      },
+      handleScroll: {
+        mouseWheel: true,
+        pressedMouseMove: true,
+        horzTouchDrag: true,
+        vertTouchDrag: false,
+      },
+      handleScale: {
+        axisPressedMouseMove: true,
+        mouseWheel: true,
+        pinch: true,
+      },
+    })
 
-  const points = data.map((point) => {
-    const x = left + ((point.time - minTime) / timeRange) * plotWidth
-    const y = top + (1 - (point.cumPnl - min) / range) * plotHeight
-    return { x, y, value: point.cumPnl, time: point.time }
-  })
-  const pointsStr = points.map((point) => `${point.x},${point.y}`).join(' ')
-  const lastPoint = points[points.length - 1]
-  const areaPoints = `${left},${height - bottom} ${pointsStr} ${left + plotWidth},${height - bottom}`
-  const zeroY = top + (1 - (0 - min) / range) * plotHeight
-  const yTicks = Array.from({ length: 4 }, (_, index) => {
-    const value = max - (range / 3) * index
-    const y = top + (plotHeight / 3) * index
-    return { value, y }
-  })
-  const xTicks = [0, 0.5, 1].map((position) => {
-    const time = minTime + timeRange * position
-    const x = left + plotWidth * position
-    return { x, label: formatShortDate(time) }
-  })
+    const series = chart.addSeries(AreaSeries, {
+      lineColor: stroke,
+      lineWidth: 3,
+      priceLineColor: stroke,
+      lastValueVisible: true,
+      crosshairMarkerVisible: true,
+      crosshairMarkerRadius: 5,
+      topColor: data[data.length - 1]?.value >= 0 ? 'rgba(65, 219, 195, 0.22)' : 'rgba(255, 124, 135, 0.22)',
+      bottomColor: 'rgba(65, 219, 195, 0.02)',
+    })
 
-  return (
-    <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none">
-      <defs>
-        <linearGradient id="pnl-fill" x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0%" stopColor={stroke} stopOpacity={0.28} />
-          <stop offset="100%" stopColor={stroke} stopOpacity={0} />
-        </linearGradient>
-      </defs>
+    series.setData(data)
+    chart.timeScale().fitContent()
 
-      {yTicks.map((tick, index) => (
-        <g key={`y-${index}`}>
-          <line
-            x1={left}
-            y1={tick.y}
-            x2={left + plotWidth}
-            y2={tick.y}
-            stroke="rgba(140,179,174,0.16)"
-            strokeDasharray="2 3"
-          />
-          <text
-            x={left - 1.5}
-            y={tick.y - 1}
-            textAnchor="end"
-            fontSize="3.2"
-            fill="rgba(140,179,174,0.8)"
-          >
-            {formatAxisUsd(tick.value)}
-          </text>
-        </g>
-      ))}
+    const observer = new ResizeObserver(() => {
+      chart.timeScale().fitContent()
+    })
+    observer.observe(host)
 
-      {xTicks.map((tick, index) => (
-        <text
-          key={`x-${index}`}
-          x={tick.x}
-          y={height - 3}
-          textAnchor={index === 0 ? 'start' : index === xTicks.length - 1 ? 'end' : 'middle'}
-          fontSize="3.2"
-          fill="rgba(140,179,174,0.8)"
-        >
-          {tick.label}
-        </text>
-      ))}
+    return () => {
+      observer.disconnect()
+      chart.remove()
+    }
+  }, [data])
 
-      {zeroY >= top && zeroY <= height - bottom && (
-        <line
-          x1={left}
-          y1={zeroY}
-          x2={left + plotWidth}
-          y2={zeroY}
-          stroke="rgba(242,247,245,0.26)"
-          strokeDasharray="2 3"
-        />
-      )}
-
-      <polygon points={areaPoints} fill="url(#pnl-fill)" />
-      <polyline
-        points={pointsStr}
-        fill="none"
-        stroke={stroke}
-        strokeWidth="1.8"
-        strokeLinejoin="round"
-        strokeLinecap="round"
-      />
-      <circle cx={lastPoint.x} cy={lastPoint.y} r="1.9" fill={stroke} />
-      <circle cx={lastPoint.x} cy={lastPoint.y} r="3.4" fill="rgba(62,224,187,0.12)" />
-    </svg>
-  )
+  return <div ref={hostRef} className="chart-host" />
 }
 
-function formatShortDate(ts: number): string {
-  const date = new Date(ts)
-  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
-}
+function normalizeSeries(data: PnlPoint[]): Array<{ time: UTCTimestamp; value: number }> {
+  const bySecond = new Map<number, number>()
 
-function formatAxisUsd(value: number): string {
-  const rounded = Math.abs(value) >= 100 ? Math.round(value) : Number(value.toFixed(1))
-  return formatUsd(rounded).replace('.00', '')
+  for (const point of data) {
+    const second = Math.max(1, Math.floor(Number(point.time) / 1000))
+    bySecond.set(second, Number(point.cumPnl))
+  }
+
+  return [...bySecond.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([time, value]) => ({ time: time as UTCTimestamp, value }))
 }
