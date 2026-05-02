@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import type { DashboardData, RuntimeInfo, ConfigSection, AuthSession } from './types'
 import {
   ApiError,
@@ -46,6 +46,8 @@ export default function App() {
   const [flash, setFlash] = useState<FlashState | null>(null)
   const [busy, setBusy] = useState(false)
   const [voiceEnabled, setVoiceEnabled] = useState(false)
+  const botActionInFlightRef = useRef<Set<string>>(new Set())
+  const configSaveInFlightRef = useRef(false)
 
   const { lastEvent } = useVoiceNotifications(dashboard, voiceEnabled)
 
@@ -226,7 +228,10 @@ export default function App() {
   }, [])
 
   const handleBotAction = useCallback(async (url: string, message: string, body: unknown) => {
-    if (busy) return
+    if (botActionInFlightRef.current.has(url)) {
+      return
+    }
+    botActionInFlightRef.current.add(url)
     setBusy(true)
     try {
       await botAction(url, body)
@@ -240,11 +245,16 @@ export default function App() {
       }
       showFlash(`Action failed: ${(err as Error).message}`, 'bad')
     } finally {
+      botActionInFlightRef.current.delete(url)
       setBusy(false)
     }
-  }, [busy, loadDashboard, showFlash])
+  }, [loadDashboard, showFlash])
 
   const handleSaveConfig = useCallback(async (values: Record<string, unknown>) => {
+    if (configSaveInFlightRef.current) {
+      return
+    }
+    configSaveInFlightRef.current = true
     try {
       await saveConfig(values)
       showFlash('Config saved. Restart the bot process to apply most changes.')
@@ -256,6 +266,8 @@ export default function App() {
         return
       }
       showFlash(`Failed to save config: ${(err as Error).message}`, 'bad')
+    } finally {
+      configSaveInFlightRef.current = false
     }
   }, [loadConfig, showFlash])
 
