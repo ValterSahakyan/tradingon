@@ -3,7 +3,6 @@ set -eu
 
 APP_DIR="${APP_DIR:-/opt/tradingon}"
 COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.prod.yml}"
-HEALTHCHECK_URL="${HEALTHCHECK_URL:-http://127.0.0.1:3000/api/health}"
 
 cd "$APP_DIR"
 
@@ -11,6 +10,10 @@ if [ ! -f .env ]; then
   echo "Missing $APP_DIR/.env"
   exit 1
 fi
+
+PORT_VALUE="$(grep -E '^PORT=' .env | tail -n 1 | cut -d '=' -f 2- | tr -d '\r' || true)"
+PORT_VALUE="${PORT_VALUE:-3000}"
+HEALTHCHECK_URL="${HEALTHCHECK_URL:-http://127.0.0.1:${PORT_VALUE}/api/health}"
 
 docker compose -f "$COMPOSE_FILE" up -d --build --remove-orphans
 

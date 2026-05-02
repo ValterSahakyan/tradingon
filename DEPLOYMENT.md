@@ -43,10 +43,7 @@ The backend serves the built frontend from `public/`, so the production app runs
 - runs `npm run build:all`
 - runs `npm test`
 - builds the Docker image
-
-`Deploy` workflow:
-
-- repeats typecheck, build, and tests
+- on pushes to `main`, runs the deploy job after CI passes
 - syncs the repo to the target server over SSH
 - runs `scripts/deploy-prod.sh`
 
