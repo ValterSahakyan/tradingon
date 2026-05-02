@@ -144,8 +144,9 @@ export class HyperliquidClient implements OnModuleInit {
     }
 
     const current = await this.getActiveAssetData(coin);
-    const isCross = current?.leverage?.type === 'cross' || this.usesUnifiedCollateral();
-    if (current?.leverage?.value === leverage && current.leverage.type === (isCross ? 'cross' : 'isolated')) {
+    const isCross = this.usesUnifiedCollateral();
+    const targetMode = isCross ? 'cross' : 'isolated';
+    if (current?.leverage?.value === leverage && current.leverage.type === targetMode) {
       this.logger.log(`setLeverage skipped for ${coin}: already ${current.leverage.type} ${leverage}x`);
       return;
     }
@@ -155,7 +156,7 @@ export class HyperliquidClient implements OnModuleInit {
     try {
       const { sig, nonce } = await this.signL1Action(action, vaultAddress);
       await http.post('/exchange', { action, nonce, signature: sig, vaultAddress });
-      this.logger.log(`setLeverage applied for ${coin}: ${isCross ? 'cross' : 'isolated'} ${leverage}x`);
+      this.logger.log(`setLeverage applied for ${coin}: ${targetMode} ${leverage}x`);
     } catch (err) {
       this.logger.warn(
         `setLeverage failed for ${coin}: ${this.formatAxiosError(err)} | action=${JSON.stringify(action)}`,

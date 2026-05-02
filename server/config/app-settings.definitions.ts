@@ -74,6 +74,16 @@ export const APP_SETTING_FIELDS: SettingField[] = [
     editable: false,
   }),
   field({
+    key: 'voiceAlertsEnabled',
+    env: null,
+    path: 'dashboard.voiceAlertsEnabled',
+    type: 'boolean',
+    label: 'Voice Alerts Enabled',
+    section: 'Dashboard',
+    editable: true,
+    help: 'Persists the dashboard voice alert toggle across refreshes.',
+  }),
+  field({
     key: 'liveTradingEnabled',
     env: 'LIVE_TRADING_ENABLED',
     path: 'execution.enabled',

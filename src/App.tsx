@@ -31,6 +31,16 @@ function getMetaMaskProvider(): BrowserEthereum | null {
   return eth.isMetaMask ? eth : null
 }
 
+function getBooleanConfigValue(sections: ConfigSection[], key: string): boolean | null {
+  for (const section of sections) {
+    const field = section.fields.find((entry) => entry.key === key)
+    if (!field) continue
+    if (field.rawValue === true || field.rawValue === 'true') return true
+    if (field.rawValue === false || field.rawValue === 'false') return false
+  }
+  return null
+}
+
 export default function App() {
   const [authed, setAuthed] = useState(false)
   const [session, setSession] = useState<AuthSession | null>(null)
@@ -48,6 +58,7 @@ export default function App() {
   const [voiceEnabled, setVoiceEnabled] = useState(false)
   const botActionInFlightRef = useRef<Set<string>>(new Set())
   const configSaveInFlightRef = useRef(false)
+  const voiceToggleInFlightRef = useRef(false)
 
   const { lastEvent } = useVoiceNotifications(dashboard, voiceEnabled)
 
@@ -122,6 +133,10 @@ export default function App() {
   const loadConfig = useCallback(async () => {
     const cfg = await fetchConfig()
     setConfig(cfg.sections)
+    const persistedVoiceEnabled = getBooleanConfigValue(cfg.sections, 'voiceAlertsEnabled')
+    if (persistedVoiceEnabled !== null) {
+      setVoiceEnabled(persistedVoiceEnabled)
+    }
   }, [])
 
   useEffect(() => {
@@ -271,6 +286,31 @@ export default function App() {
     }
   }, [loadConfig, showFlash])
 
+  const handleVoiceToggle = useCallback(async () => {
+    if (voiceToggleInFlightRef.current) {
+      return
+    }
+
+    const nextValue = !voiceEnabled
+    voiceToggleInFlightRef.current = true
+    setVoiceEnabled(nextValue)
+
+    try {
+      await saveConfig({ voiceAlertsEnabled: nextValue })
+      await loadConfig()
+    } catch (err) {
+      setVoiceEnabled(!nextValue)
+      if (err instanceof ApiError && err.status === 401) {
+        setAuthed(false)
+        setAuthError('Session expired. Connect again.')
+        return
+      }
+      showFlash(`Failed to save voice alerts: ${(err as Error).message}`, 'bad')
+    } finally {
+      voiceToggleInFlightRef.current = false
+    }
+  }, [loadConfig, showFlash, voiceEnabled])
+
   if (!sessionChecked) {
     return (
       <main className="auth-shell">
@@ -305,7 +345,7 @@ export default function App() {
         busy={busy}
         voiceEnabled={voiceEnabled}
         lastEvent={lastEvent}
-        onVoiceToggle={() => setVoiceEnabled((value) => !value)}
+        onVoiceToggle={handleVoiceToggle}
         onScan={() => handleBotAction('/api/bot/scan', 'Manual scan requested.', {})}
         onPause={() =>
           handleBotAction('/api/bot/pause', 'Bot paused for 2 hours.', {

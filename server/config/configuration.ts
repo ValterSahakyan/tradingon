@@ -83,4 +83,7 @@ export default () => ({
     sessionSecret: process.env.DASHBOARD_AUTH_SECRET || null,
     sessionTtlHours: parseInt(process.env.DASHBOARD_SESSION_TTL_HOURS || '12'),
   },
+  dashboard: {
+    voiceAlertsEnabled: false,
+  },
 });

@@ -25,7 +25,8 @@ export class ExecutionService {
     const effectiveNotional = Math.max(notional, minOrderNotional, exchangeMinOrderNotional);
     const effectiveMargin = effectiveNotional / leverage;
 
-    // Always set isolated margin + leverage before entering
+    // Standard perp accounts should trade in isolated mode.
+    // Unified/portfolio-margin accounts stay on cross because collateral is shared account-wide.
     await this.hl.setLeverage(token, leverage);
 
     const isBuy = direction === 'long';
