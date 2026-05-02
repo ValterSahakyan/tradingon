@@ -26,6 +26,8 @@ interface FillResult {
   totalSz?: number;
 }
 
+type PriceRoundingMode = 'nearest' | 'up' | 'down';
+
 @Injectable()
 export class HyperliquidClient implements OnModuleInit {
   private readonly logger = new Logger(HyperliquidClient.name);
@@ -79,7 +81,7 @@ export class HyperliquidClient implements OnModuleInit {
     const wire: OrderWire = {
       a: asset.index,
       b: isBuy,
-      p: this.fmtPrice(limitPx, asset.szDecimals),
+      p: this.fmtPrice(limitPx, asset.szDecimals, isBuy ? 'up' : 'down'),
       s: this.fmtSize(sz, asset.szDecimals),
       r: reduceOnly,
       t: { limit: { tif: 'Ioc' } },
@@ -105,7 +107,7 @@ export class HyperliquidClient implements OnModuleInit {
     const wire: OrderWire = {
       a: asset.index,
       b: isBuy,
-      p: this.fmtPrice(limitPx, asset.szDecimals),
+      p: this.fmtPrice(limitPx, asset.szDecimals, 'nearest'),
       s: this.fmtSize(sz, asset.szDecimals),
       r: reduceOnly,
       t: { limit: { tif } },
@@ -699,17 +701,23 @@ export class HyperliquidClient implements OnModuleInit {
     return this.http !== null && this.wallet !== null && this.assets.size > 0;
   }
 
-  fmtPrice(price: number, szDecimals = 4): string {
+  fmtPrice(price: number, szDecimals = 4, mode: PriceRoundingMode = 'nearest'): string {
     if (price === 0) {
       return '0';
     }
 
     const maxDecimals = Math.max(0, 6 - szDecimals);
     const sig = parseFloat(price.toPrecision(5));
-    const scaled = maxDecimals > 0
-      ? Math.round(sig * 10 ** maxDecimals) / 10 ** maxDecimals
-      : Math.round(sig);
-    const str = maxDecimals > 0 ? scaled.toFixed(maxDecimals) : String(Math.round(scaled));
+    const tick = maxDecimals > 0 ? 10 ** -maxDecimals : 1;
+    const scaledUnits = sig / tick;
+    const quantizedUnits =
+      mode === 'up'
+        ? Math.ceil(scaledUnits)
+        : mode === 'down'
+          ? Math.floor(scaledUnits)
+          : Math.round(scaledUnits);
+    const normalized = quantizedUnits <= 0 && sig > 0 ? tick : quantizedUnits * tick;
+    const str = maxDecimals > 0 ? normalized.toFixed(maxDecimals) : String(Math.round(normalized));
 
     return str.replace(/(\.\d*?[1-9])0+$/, '$1').replace(/\.0+$/, '').replace(/\.$/, '');
   }
