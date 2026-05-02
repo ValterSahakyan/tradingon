@@ -1,5 +1,5 @@
 import type { Position } from '../types'
-import { formatUsd, formatPct, PATTERN_NAMES } from '../utils'
+import { formatUsd, formatPct } from '../utils'
 
 interface Props {
   positions: Position[]
@@ -9,84 +9,86 @@ export default function PositionsPanel({ positions }: Props) {
   return (
     <div className="panel">
       <div className="panel-head">
-        <div>
-          <div className="portfolio-tabs">
-            <span className="portfolio-tab">Balances ({positions.length})</span>
-            <span className="portfolio-tab is-active">Positions</span>
-            <span className="portfolio-tab">Outcomes</span>
-            <span className="portfolio-tab">Open Orders</span>
-            <span className="portfolio-tab">Trade History</span>
-          </div>
-          <div className="panel-title">Open Positions</div>
+        <div className="portfolio-tabs">
+          <span className="portfolio-tab is-active">Positions ({positions.length})</span>
         </div>
-        <div className="mini">{positions.length} open</div>
+        <div className="mini">All</div>
       </div>
 
-      <div className="positions">
-        {positions.length === 0 ? (
-          <div className="empty-state">
-            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M3 3v18h18"/>
-              <path d="m18.7 8-5.1 5.2-2.8-2.7L7 14.3"/>
-            </svg>
-            <p>No active positions tracked</p>
-          </div>
-        ) : (
-          positions.map((pos, i) => <PositionCard key={`${pos.token}-${i}`} pos={pos} />)
-        )}
-      </div>
+      {positions.length === 0 ? (
+        <div className="empty-state">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 3v18h18"/>
+            <path d="m18.7 8-5.1 5.2-2.8-2.7L7 14.3"/>
+          </svg>
+          <p>No active positions tracked</p>
+        </div>
+      ) : (
+        <div className="positions-table-wrap">
+          <table className="positions-table">
+            <thead>
+              <tr>
+                <th>Coin</th>
+                <th>Size</th>
+                <th>Position Value</th>
+                <th>Entry Price</th>
+                <th>Mark Price</th>
+                <th>PNL (ROE %)</th>
+                <th>Liq. Price</th>
+                <th>Margin</th>
+                <th>Funding</th>
+                <th>Close All</th>
+                <th>TP/SL</th>
+              </tr>
+            </thead>
+            <tbody>
+              {positions.map((pos, i) => (
+                <PositionRow key={`${pos.token}-${i}`} pos={pos} />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   )
 }
 
-function PositionCard({ pos }: { pos: Position }) {
+function PositionRow({ pos }: { pos: Position }) {
   const pnlNum = Number(pos.pnlUsd)
-  const pnlColor = pnlNum >= 0 ? 'var(--good)' : 'var(--bad)'
+  const pnlClass = pnlNum >= 0 ? 'good' : 'bad'
+  const syntheticSize = `${Number(pos.notional / Math.max(pos.currentPrice, 0.00000001)).toFixed(2)} ${pos.token}`
+  const tpSl = `${Number(pos.tp1Price).toFixed(4)} / ${Number(pos.stopPrice).toFixed(4)}`
 
   return (
-    <div className={`position position--row ${pos.direction}`}>
-      <div className="position-row">
-        <div>
-          <div className="token">{pos.token}</div>
-          <div className="mini">
-            {pos.direction.toUpperCase()} | Score {pos.score} | {pos.marketCondition}
-          </div>
+    <tr className={`positions-table__row positions-table__row--${pos.direction}`}>
+      <td>
+        <div className="positions-coin">
+          <span className="positions-coin__name">{pos.token}</span>
+          <span className={`positions-coin__multiplier positions-coin__multiplier--${pos.direction}`}>
+            {pos.leverage}x
+          </span>
         </div>
-
-        <div className="position-grid position-grid--portfolio">
-          <DataBox label="Size" value={`${Number(pos.notional).toFixed(2)}`} />
-          <DataBox label="Position Value" value={formatUsd(pos.notional)} />
-          <DataBox label="Entry Price" value={Number(pos.entryPrice).toFixed(6)} />
-          <DataBox label="Mark Price" value={Number(pos.currentPrice).toFixed(6)} />
-          <DataBox label="PnL (ROE %)" value={`${formatUsd(pnlNum)} | ${formatPct(pos.pnlPct)}`} color={pnlColor} />
-          <DataBox label="Liq. Price" value={Number(pos.stopPrice).toFixed(6)} />
-          <DataBox label="Margin" value={Number(pos.margin).toFixed(2)} />
-          <DataBox label="Funding" value={`${pos.leverage}x`} />
+      </td>
+      <td className="mono">{syntheticSize}</td>
+      <td className="mono">{formatUsd(pos.notional)}</td>
+      <td className="mono">{Number(pos.entryPrice).toFixed(6)}</td>
+      <td className="mono">{Number(pos.currentPrice).toFixed(6)}</td>
+      <td className={`mono positions-pnl positions-pnl--${pnlClass}`}>
+        {formatUsd(pnlNum)} ({formatPct(pos.pnlPct)})
+      </td>
+      <td className="mono">{Number(pos.stopPrice).toFixed(6)}</td>
+      <td className="mono">
+        {formatUsd(pos.margin)} <span className="positions-muted">(Cross)</span>
+      </td>
+      <td className="mono">{pos.holdMins}m</td>
+      <td>
+        <div className="positions-actions">
+          <span>Limit</span>
+          <span>Market</span>
+          <span>Reverse</span>
         </div>
-
-        <div className="position-side">
-          <div className="mono" style={{ fontSize: 20, color: pnlColor }}>
-            {formatUsd(pnlNum)}
-          </div>
-          <div className="tags tags--compact">
-            {pos.patternsFired?.length > 0
-              ? pos.patternsFired.map(id => (
-                  <span key={id} className="tag">{PATTERN_NAMES[id] ?? id}</span>
-                ))
-              : <span className="mini">No patterns recorded</span>}
-          </div>
-          <div className="mini">TP1 {Number(pos.tp1Price).toFixed(6)} | {pos.timeLeftMins}m left</div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function DataBox({ label, value, color }: { label: string; value: string; color?: string }) {
-  return (
-    <div className="data-box">
-      <span>{label}</span>
-      <strong className="mono" style={color ? { color } : undefined}>{value}</strong>
-    </div>
+      </td>
+      <td className="mono">{tpSl}</td>
+    </tr>
   )
 }

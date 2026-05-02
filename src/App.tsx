@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import type { DashboardData, RuntimeInfo, ConfigSection, AuthSession } from './types'
+import type { DashboardData, RuntimeInfo, ConfigSection, AuthSession, DashboardPage } from './types'
 import {
   ApiError,
   fetchDashboard, fetchRuntime, fetchConfig, saveConfig, botAction, fetchBalance,
   fetchSession, verifyWallet, logoutSession,
 } from './api'
 import Flash, { type FlashState } from './components/Flash'
+import DashboardNav from './components/DashboardNav'
 import HeroSection from './components/HeroSection'
 import PositionsPanel from './components/PositionsPanel'
 import SignalsPanel from './components/SignalsPanel'
@@ -40,6 +41,14 @@ function getBooleanConfigValue(sections: ConfigSection[], key: string): boolean 
   return null
 }
 
+function getDashboardPageFromHash(hash: string): DashboardPage {
+  const value = hash.replace(/^#\/?/, '').trim().toLowerCase()
+  if (value === 'positions' || value === 'trades' || value === 'signals' || value === 'config') {
+    return value
+  }
+  return 'portfolio'
+}
+
 export default function App() {
   const [authed, setAuthed] = useState(false)
   const [session, setSession] = useState<AuthSession | null>(null)
@@ -55,6 +64,7 @@ export default function App() {
   const [flash, setFlash] = useState<FlashState | null>(null)
   const [busy, setBusy] = useState(false)
   const [voiceEnabled, setVoiceEnabled] = useState(false)
+  const [currentPage, setCurrentPage] = useState<DashboardPage>(() => getDashboardPageFromHash(window.location.hash))
   const botActionInFlightRef = useRef<Set<string>>(new Set())
   const configSaveInFlightRef = useRef(false)
   const voiceToggleInFlightRef = useRef(false)
@@ -81,6 +91,17 @@ export default function App() {
     applySession(nextSession)
     return nextSession
   }, [applySession])
+
+  useEffect(() => {
+    const syncPageFromHash = () => {
+      setCurrentPage(getDashboardPageFromHash(window.location.hash))
+    }
+
+    syncPageFromHash()
+    window.addEventListener('hashchange', syncPageFromHash)
+
+    return () => window.removeEventListener('hashchange', syncPageFromHash)
+  }, [])
 
   useEffect(() => {
     refreshSession()
@@ -310,6 +331,37 @@ export default function App() {
     }
   }, [loadConfig, showFlash, voiceEnabled])
 
+  const handleNavigate = useCallback((page: DashboardPage) => {
+    const nextHash = page === 'portfolio' ? '#/portfolio' : `#/${page}`
+    if (window.location.hash === nextHash) {
+      setCurrentPage(page)
+      return
+    }
+    window.location.hash = nextHash
+  }, [])
+
+  const pageTitle =
+    currentPage === 'portfolio'
+      ? 'Portfolio'
+      : currentPage === 'positions'
+        ? 'Positions'
+        : currentPage === 'trades'
+          ? 'Trades'
+          : currentPage === 'signals'
+            ? 'Signals'
+            : 'Config'
+
+  const pageDescription =
+    currentPage === 'portfolio'
+      ? 'High-level portfolio and runtime overview.'
+      : currentPage === 'positions'
+        ? 'Open position monitoring and execution context.'
+        : currentPage === 'trades'
+          ? 'Recent closed trades and trade performance history.'
+          : currentPage === 'signals'
+            ? 'Confirmed signals plus current scan candidates.'
+            : 'Database-backed operator settings.'
+
   if (!sessionChecked) {
     return (
       <main className="auth-shell">
@@ -337,22 +389,12 @@ export default function App() {
     <div className="shell">
       <Flash flash={flash} />
 
-      <HeroSection
-        dashboard={dashboard}
+      <DashboardNav
+        currentPage={currentPage}
+        onNavigate={handleNavigate}
+        version={dashboard?.meta?.version ?? '-'}
         runtime={runtime}
-        balance={balance}
-        busy={busy}
-        voiceEnabled={voiceEnabled}
-        lastEvent={lastEvent}
-        onVoiceToggle={handleVoiceToggle}
-        onScan={() => handleBotAction('/api/bot/scan', 'Manual scan requested.', {})}
-        onPause={() =>
-          handleBotAction('/api/bot/pause', 'Bot paused for 2 hours.', {
-            reason: 'manual_dashboard_pause',
-            durationMs: 2 * 60 * 60 * 1000,
-          })
-        }
-        onResume={() => handleBotAction('/api/bot/resume', 'Bot resumed.', {})}
+        status={dashboard?.status ?? null}
       />
 
       {session?.authEnabled !== false && (
@@ -367,15 +409,48 @@ export default function App() {
         </section>
       )}
 
-      <section className="layout">
-        <div className="stack">
+      {currentPage !== 'portfolio' && (
+        <section className="page-intro panel">
+          <div className="kicker">{pageTitle}</div>
+          <h2>{pageTitle}</h2>
+          <p>{pageDescription}</p>
+        </section>
+      )}
+
+      {currentPage === 'portfolio' && (
+        <HeroSection
+          dashboard={dashboard}
+          runtime={runtime}
+          balance={balance}
+          busy={busy}
+          voiceEnabled={voiceEnabled}
+          lastEvent={lastEvent}
+          onVoiceToggle={handleVoiceToggle}
+          onScan={() => handleBotAction('/api/bot/scan', 'Manual scan requested.', {})}
+          onPause={() =>
+            handleBotAction('/api/bot/pause', 'Bot paused for 2 hours.', {
+              reason: 'manual_dashboard_pause',
+              durationMs: 2 * 60 * 60 * 1000,
+            })
+          }
+          onResume={() => handleBotAction('/api/bot/resume', 'Bot resumed.', {})}
+        />
+      )}
+
+      {currentPage === 'positions' && (
+        <section className="layout">
           <PositionsPanel positions={dashboard?.positions ?? []} />
-        </div>
-        <div className="stack layout layout--secondary">
-          <div className="stack">
-            <TradesTable trades={dashboard?.trades ?? []} />
-          </div>
-          <div className="stack">
+        </section>
+      )}
+
+      {currentPage === 'trades' && (
+        <section className="layout">
+          <TradesTable trades={dashboard?.trades ?? []} />
+        </section>
+      )}
+
+      {currentPage === 'signals' && (
+        <section className="layout">
           <SignalsPanel
             signals={dashboard?.signals ?? []}
             watchlist={dashboard?.watchlist ?? []}
@@ -383,14 +458,18 @@ export default function App() {
             latestCandidatesFound={dashboard?.status.scanDiagnostics?.candidatesFound ?? 0}
             lastScanAt={runtime?.lastScanAt}
           />
+        </section>
+      )}
+
+      {currentPage === 'config' && (
+        <section className="layout">
           <ConfigPanel
             sections={config}
             onSave={handleSaveConfig}
             onReload={loadConfig}
           />
-          </div>
-        </div>
-      </section>
+        </section>
+      )}
     </div>
   )
 }

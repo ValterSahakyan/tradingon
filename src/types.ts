@@ -144,3 +144,5 @@ export interface ConfigSection {
   section: string
   fields: ConfigField[]
 }
+
+export type DashboardPage = 'portfolio' | 'positions' | 'trades' | 'signals' | 'config'

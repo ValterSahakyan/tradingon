@@ -29,7 +29,6 @@ export default function HeroSection({
 }: Props) {
   const status = dashboard?.status
   const stats = dashboard?.stats
-  const appVersion = dashboard?.meta?.version ?? '-'
 
   const pnlNum = Number(stats?.todayPnl ?? 0)
   const pnlColor = pnlNum >= 0 ? 'var(--good)' : 'var(--bad)'
@@ -53,28 +52,6 @@ export default function HeroSection({
 
   return (
     <section className="portfolio-hero">
-      <div className="portfolio-nav">
-        <div className="portfolio-brand">
-          <span className="brand-mark" />
-          <span>TradingOn</span>
-        </div>
-
-        <div className="portfolio-links">
-          <button type="button" className="nav-link">Trade</button>
-          <button type="button" className="nav-link is-active">Portfolio</button>
-          <button type="button" className="nav-link">Signals</button>
-          <button type="button" className="nav-link">Config</button>
-          <button type="button" className="nav-link">History</button>
-        </div>
-
-        <div className="portfolio-nav-actions">
-          <div className="version-chip">v{appVersion}</div>
-          <div className="wallet-chip">
-            {runtime ? runtime.mode.toUpperCase() : 'MODE'} · {status ? status.state.replaceAll('_', ' ') : 'loading'}
-          </div>
-        </div>
-      </div>
-
       <div className="portfolio-header">
         <div>
           <div className="kicker">Portfolio</div>
@@ -187,11 +164,7 @@ export default function HeroSection({
           </div>
 
           <div className="hero-chart-head">
-            <div className="chart-tabs">
-              <span className="chart-tab">Account Value</span>
-              <span className="chart-tab is-active">PNL</span>
-              <span className="chart-tab">Perps PNL</span>
-            </div>
+            <div className="panel-title">PnL</div>
             <div className="mini">{lastEvent ?? 'No voice events yet'}</div>
           </div>
 
