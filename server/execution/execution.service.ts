@@ -149,6 +149,10 @@ export class ExecutionService {
     return this.hl.getSpotUsdcBalance();
   }
 
+  async getPortfolio(): Promise<Record<string, { accountValueHistory: Array<[number, string]>; pnlHistory: Array<[number, string]>; vlm: string }> | null> {
+    return this.hl.getPortfolio();
+  }
+
   getWalletAddress(): string | null {
     return this.hl.getWalletAddress();
   }

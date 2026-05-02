@@ -178,9 +178,12 @@ export class DashboardService {
   }
 
   async getDailyStats() {
+    const portfolio = await this.execution.getPortfolio();
+    const exchangeTodayPnl = this.readLatestPortfolioPnl(portfolio, 'day');
+    const exchangeWeekPnl = this.readLatestPortfolioPnl(portfolio, 'week');
     const stats = await this.logging.getDailyStats();
-    const todayPnl = this.toNumber(await this.logging.getTodayPnl());
-    const weekPnl = this.toNumber(await this.logging.getWeekPnl());
+    const todayPnl = exchangeTodayPnl ?? this.toNumber(await this.logging.getTodayPnl());
+    const weekPnl = exchangeWeekPnl ?? this.toNumber(await this.logging.getWeekPnl());
     return {
       date: new Date().toISOString().split('T')[0],
       totalTrades: stats?.totalTrades ?? 0,
@@ -222,6 +225,19 @@ export class DashboardService {
   }
 
   async getPnlChartData() {
+    const portfolio = await this.execution.getPortfolio();
+    const exchangePnlHistory = this.readPortfolioHistory(portfolio, 'allTime')
+      ?? this.readPortfolioHistory(portfolio, 'month')
+      ?? this.readPortfolioHistory(portfolio, 'week')
+      ?? this.readPortfolioHistory(portfolio, 'day');
+
+    if (exchangePnlHistory && exchangePnlHistory.length > 1) {
+      return exchangePnlHistory.map(([time, pnl]) => ({
+        time,
+        cumPnl: +this.toNumber(pnl).toFixed(4),
+      }));
+    }
+
     const trades = await this.tradeRepo
       .createQueryBuilder('t')
       .where('t.exitTime IS NOT NULL')
@@ -371,5 +387,33 @@ export class DashboardService {
     } catch {
       return '0.0.0';
     }
+  }
+
+  private readLatestPortfolioPnl(
+    portfolio: Record<string, { pnlHistory: Array<[number, string]> }> | null,
+    window: string,
+  ): number | null {
+    const history = portfolio?.[window]?.pnlHistory;
+    if (!history?.length) {
+      return null;
+    }
+
+    const latest = history[history.length - 1];
+    return latest ? this.toNumber(latest[1]) : null;
+  }
+
+  private readPortfolioHistory(
+    portfolio: Record<string, { pnlHistory: Array<[number, string]> }> | null,
+    window: string,
+  ): Array<[number, number]> | null {
+    const history = portfolio?.[window]?.pnlHistory;
+    if (!history?.length) {
+      return null;
+    }
+
+    return history
+      .map(([time, pnl]) => [Number(time), this.toNumber(pnl)] as [number, number])
+      .filter(([time]) => Number.isFinite(time))
+      .sort((left, right) => left[0] - right[0]);
   }
 }

@@ -112,7 +112,8 @@ export class SignalService {
     diagnostics: ScanDiagnostics,
   ): Promise<{ signal: TradeSignal | null; candidate: ScanCandidate | null }> {
     const candles = this.marketData.getCandles(token);
-    if (candles.length < 49) {
+    const requiredCandles = Math.max(this.config.get<number>('scan.candleLookback') + 1, 25);
+    if (candles.length < requiredCandles) {
       diagnostics.insufficientCandles += 1;
       this.bumpReject(diagnostics, 'insufficient_candles');
       return { signal: null, candidate: null };

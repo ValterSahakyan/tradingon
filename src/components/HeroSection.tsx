@@ -122,7 +122,7 @@ export default function HeroSection({
           <div className="panel-head portfolio-chart-headline">
             <div>
               <div className="panel-title">PnL Performance</div>
-              <div className="mini">Recorded trade PnL with live unrealized portfolio impact</div>
+              <div className="mini">Hyperliquid portfolio PnL and account history, with local fallback when unavailable</div>
             </div>
             <div className="portfolio-chart-metrics">
               <div>
@@ -143,7 +143,7 @@ export default function HeroSection({
           <div className="hero-chart-head">
             <div className="portfolio-chart-legend">
               <span className="chart-dot" style={{ backgroundColor: pnlNum >= 0 ? 'var(--good)' : 'var(--bad)' }} />
-              <span>Realized cumulative PnL with current live open-position impact</span>
+              <span>Exchange portfolio PnL history</span>
             </div>
             <div className="mini">{lastEvent ?? 'No voice events yet'}</div>
           </div>

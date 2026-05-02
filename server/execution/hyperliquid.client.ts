@@ -26,6 +26,12 @@ interface FillResult {
   totalSz?: number;
 }
 
+interface PortfolioWindow {
+  accountValueHistory: Array<[number, string]>;
+  pnlHistory: Array<[number, string]>;
+  vlm: string;
+}
+
 type PriceRoundingMode = 'nearest' | 'up' | 'down';
 
 @Injectable()
@@ -46,6 +52,8 @@ export class HyperliquidClient implements OnModuleInit {
   private cachedAccountValue: number | null = null;
   private cachedAccountValueAt = 0;
   private cachedSpotUsdc: number | null = null;
+  private cachedPortfolio: Record<string, PortfolioWindow> | null = null;
+  private cachedPortfolioAt = 0;
 
   constructor(private readonly config: AppConfigService) {}
 
@@ -351,6 +359,45 @@ export class HyperliquidClient implements OnModuleInit {
     return this.accountAddress ?? this.wallet?.address ?? null;
   }
 
+  async getPortfolio(): Promise<Record<string, PortfolioWindow> | null> {
+    const cacheAge = Date.now() - this.cachedPortfolioAt;
+    if (this.cachedPortfolio && cacheAge < 20_000) {
+      return this.cachedPortfolio;
+    }
+
+    const http = await this.getHttp();
+    const queryAddress = this.accountAddress ?? this.wallet?.address;
+    if (!http || !queryAddress) {
+      return this.cachedPortfolio;
+    }
+
+    try {
+      const res = await http.post('/info', { type: 'portfolio', user: queryAddress });
+      const raw = Array.isArray(res.data) ? res.data : [];
+      const portfolio: Record<string, PortfolioWindow> = {};
+
+      for (const entry of raw) {
+        if (!Array.isArray(entry) || entry.length < 2 || typeof entry[0] !== 'string' || typeof entry[1] !== 'object' || entry[1] == null) {
+          continue;
+        }
+
+        const window = entry[1] as Partial<PortfolioWindow>;
+        portfolio[entry[0]] = {
+          accountValueHistory: Array.isArray(window.accountValueHistory) ? window.accountValueHistory as Array<[number, string]> : [],
+          pnlHistory: Array.isArray(window.pnlHistory) ? window.pnlHistory as Array<[number, string]> : [],
+          vlm: typeof window.vlm === 'string' ? window.vlm : '0',
+        };
+      }
+
+      this.cachedPortfolio = portfolio;
+      this.cachedPortfolioAt = Date.now();
+      return portfolio;
+    } catch (err) {
+      this.logger.warn(`getPortfolio failed: ${this.formatAxiosError(err)}`);
+      return this.cachedPortfolio;
+    }
+  }
+
   async getMidPrice(coin: string): Promise<number> {
     const http = await this.getHttp();
     if (!http) {
@@ -633,6 +680,8 @@ export class HyperliquidClient implements OnModuleInit {
     this.cachedAccountValue = null;
     this.cachedAccountValueAt = 0;
     this.cachedSpotUsdc = null;
+    this.cachedPortfolio = null;
+    this.cachedPortfolioAt = 0;
   }
 
   private async discoverMasterAccount(agentAddress: string): Promise<string> {

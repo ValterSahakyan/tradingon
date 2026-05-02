@@ -1,77 +1,119 @@
+function readOptionalNumber(name: string): number | undefined {
+  const raw = process.env[name];
+  if (raw == null || raw.trim() === '') {
+    return undefined;
+  }
+
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : undefined;
+}
+
+function readOptionalBoolean(name: string): boolean | undefined {
+  const raw = process.env[name];
+  if (raw == null || raw.trim() === '') {
+    return undefined;
+  }
+
+  if (raw === 'true') {
+    return true;
+  }
+
+  if (raw === 'false') {
+    return false;
+  }
+
+  return undefined;
+}
+
+function readOptionalString(name: string): string | undefined {
+  const raw = process.env[name];
+  if (raw == null || raw.trim() === '') {
+    return undefined;
+  }
+
+  return raw;
+}
+
+function readOptionalJsonArray(name: string): number[] | undefined {
+  const raw = process.env[name];
+  if (raw == null || raw.trim() === '') {
+    return undefined;
+  }
+
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.map(Number).filter(Number.isFinite) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export default () => ({
   server: {
     port: parseInt(process.env.PORT || '3000'),
   },
   execution: {
-    enabled: process.env.LIVE_TRADING_ENABLED === 'true',
-    allowMainnet: process.env.ALLOW_MAINNET_TRADING === 'true',
+    enabled: readOptionalBoolean('LIVE_TRADING_ENABLED'),
+    allowMainnet: readOptionalBoolean('ALLOW_MAINNET_TRADING'),
   },
   hyperliquid: {
-    privateKey: process.env.HYPERLIQUID_PRIVATE_KEY,
-    accountAddress: process.env.HYPERLIQUID_ACCOUNT_ADDRESS || null,
-    testnet: process.env.HYPERLIQUID_TESTNET === 'true',
-    marketOrderSlippage: 0.005,
-    apiUrl:
-      process.env.HYPERLIQUID_API_URL ||
-      (process.env.HYPERLIQUID_TESTNET === 'true'
-        ? 'https://api.hyperliquid-testnet.xyz'
-        : 'https://api.hyperliquid.xyz'),
-    wsUrl:
-      process.env.HYPERLIQUID_WS_URL ||
-      (process.env.HYPERLIQUID_TESTNET === 'true'
-        ? 'wss://api.hyperliquid-testnet.xyz/ws'
-        : 'wss://api.hyperliquid.xyz/ws'),
+    privateKey: readOptionalString('HYPERLIQUID_PRIVATE_KEY'),
+    accountAddress: readOptionalString('HYPERLIQUID_ACCOUNT_ADDRESS') ?? null,
+    testnet: readOptionalBoolean('HYPERLIQUID_TESTNET'),
+    marketOrderSlippage: readOptionalNumber('HYPERLIQUID_MARKET_ORDER_SLIPPAGE'),
+    apiUrl: readOptionalString('HYPERLIQUID_API_URL'),
+    wsUrl: readOptionalString('HYPERLIQUID_WS_URL'),
   },
   capital: {
-    initial: parseFloat(process.env.INITIAL_CAPITAL || '200'),
-    maxConcurrentPositions: parseInt(process.env.MAX_CONCURRENT_POSITIONS || '5'),
-    leverage: parseFloat(process.env.DEFAULT_LEVERAGE || '3'),
-    minOrderNotional: parseFloat(process.env.MIN_ORDER_NOTIONAL || '10'),
-    marginScore2: parseFloat(process.env.MARGIN_SCORE_2 || '4'),
-    marginScore3: parseFloat(process.env.MARGIN_SCORE_3 || '5'),
-    marginScore4: parseFloat(process.env.MARGIN_SCORE_4 || '6'),
+    initial: readOptionalNumber('INITIAL_CAPITAL'),
+    maxConcurrentPositions: readOptionalNumber('MAX_CONCURRENT_POSITIONS'),
+    leverage: readOptionalNumber('DEFAULT_LEVERAGE'),
+    minOrderNotional: readOptionalNumber('MIN_ORDER_NOTIONAL'),
+    marginScore2: readOptionalNumber('MARGIN_SCORE_2'),
+    marginScore3: readOptionalNumber('MARGIN_SCORE_3'),
+    marginScore4: readOptionalNumber('MARGIN_SCORE_4'),
   },
   exits: {
-    stopLossPercent: parseFloat(process.env.STOP_LOSS_PERCENT || '7'),
-    tp1Percent: parseFloat(process.env.TP1_PERCENT || '10'),
-    tp2Percent: parseFloat(process.env.TP2_PERCENT || '20'),
-    trailingStopPercent: parseFloat(process.env.TRAILING_STOP_PERCENT || '5'),
-    maxHoldHours: parseFloat(process.env.MAX_HOLD_HOURS || '4'),
-    volatilityStopPercent: 15,
+    stopLossPercent: readOptionalNumber('STOP_LOSS_PERCENT'),
+    tp1Percent: readOptionalNumber('TP1_PERCENT'),
+    tp2Percent: readOptionalNumber('TP2_PERCENT'),
+    trailingStopPercent: readOptionalNumber('TRAILING_STOP_PERCENT'),
+    maxHoldHours: readOptionalNumber('MAX_HOLD_HOURS'),
+    volatilityStopPercent: readOptionalNumber('VOLATILITY_STOP_PERCENT'),
   },
   risk: {
-    dailyLossLimit: parseFloat(process.env.DAILY_LOSS_LIMIT || '20'),
-    weeklyLossLimit: parseFloat(process.env.WEEKLY_LOSS_LIMIT || '40'),
-    emergencyCapitalFloor: parseFloat(process.env.EMERGENCY_CAPITAL_FLOOR || '150'),
-    consecutiveLossPause2h: 3,
-    consecutiveLossPauseDay: 5,
+    dailyLossLimit: readOptionalNumber('DAILY_LOSS_LIMIT'),
+    weeklyLossLimit: readOptionalNumber('WEEKLY_LOSS_LIMIT'),
+    emergencyCapitalFloor: readOptionalNumber('EMERGENCY_CAPITAL_FLOOR'),
+    consecutiveLossPause2h: readOptionalNumber('CONSECUTIVE_LOSS_PAUSE_2H'),
+    consecutiveLossPauseDay: readOptionalNumber('CONSECUTIVE_LOSS_PAUSE_DAY'),
   },
   filters: {
-    fundingRateMax: parseFloat(process.env.FUNDING_RATE_MAX || '0.1'),
-    minMarketCap: parseFloat(process.env.MIN_MARKET_CAP || '1000000'),
-    minTokenAgeDays: parseInt(process.env.MIN_TOKEN_AGE_DAYS || '7'),
-    maxPriceChange2h: 30,
-    consecutiveLossFilter: 3,
+    fundingRateMax: readOptionalNumber('FUNDING_RATE_MAX'),
+    minMarketCap: readOptionalNumber('MIN_MARKET_CAP'),
+    minTokenAgeDays: readOptionalNumber('MIN_TOKEN_AGE_DAYS'),
+    maxPriceChange2h: readOptionalNumber('MAX_PRICE_CHANGE_2H'),
+    consecutiveLossFilter: readOptionalNumber('CONSECUTIVE_LOSS_FILTER'),
   },
   scan: {
-    intervalSeconds: parseInt(process.env.SCAN_INTERVAL_SECONDS || '300'),
-    candleLookback: 48,
-    maxTrackedTokens: parseInt(process.env.MAX_TRACKED_TOKENS || '150'),
+    intervalSeconds: readOptionalNumber('SCAN_INTERVAL_SECONDS'),
+    candleLookback: readOptionalNumber('CANDLE_LOOKBACK'),
+    maxTrackedTokens: readOptionalNumber('MAX_TRACKED_TOKENS'),
   },
   patterns: {
-    volumeSpikeMultiplier: parseFloat(process.env.VOLUME_SPIKE_MULTIPLIER || '3'),
-    volumeSpikeMaxPriceChange: parseFloat(process.env.VOLUME_SPIKE_MAX_PRICE_CHANGE || '5'),
-    flagSharpMovePercent: parseFloat(process.env.FLAG_SHARP_MOVE_PERCENT || '20'),
-    flagConsolidationSpread: parseFloat(process.env.FLAG_CONSOLIDATION_SPREAD || '3'),
-    accumulationRangePercent: parseFloat(process.env.ACCUMULATION_RANGE_PERCENT || '8'),
-    accumulationBreakoutVolume: parseFloat(process.env.ACCUMULATION_BREAKOUT_VOLUME || '5'),
-    fibLevels: [0.5, 0.618],
-    fibTolerancePercent: 2,
+    volumeSpikeMultiplier: readOptionalNumber('VOLUME_SPIKE_MULTIPLIER'),
+    volumeSpikeMaxPriceChange: readOptionalNumber('VOLUME_SPIKE_MAX_PRICE_CHANGE'),
+    flagSharpMovePercent: readOptionalNumber('FLAG_SHARP_MOVE_PERCENT'),
+    flagConsolidationSpread: readOptionalNumber('FLAG_CONSOLIDATION_SPREAD'),
+    accumulationRangePercent: readOptionalNumber('ACCUMULATION_RANGE_PERCENT'),
+    accumulationBreakoutVolume: readOptionalNumber('ACCUMULATION_BREAKOUT_VOLUME'),
+    fibLevels: readOptionalJsonArray('FIB_LEVELS'),
+    fibTolerancePercent: readOptionalNumber('FIB_TOLERANCE_PERCENT'),
   },
   market: {
-    solBearThresholdPercent: parseFloat(process.env.SOL_BEAR_THRESHOLD_PERCENT || '5'),
-    btcBearThresholdPercent: parseFloat(process.env.BTC_BEAR_THRESHOLD_PERCENT || '8'),
-    bullMarketThresholdPercent: parseFloat(process.env.BULL_MARKET_THRESHOLD_PERCENT || '3'),
+    solBearThresholdPercent: readOptionalNumber('SOL_BEAR_THRESHOLD_PERCENT'),
+    btcBearThresholdPercent: readOptionalNumber('BTC_BEAR_THRESHOLD_PERCENT'),
+    bullMarketThresholdPercent: readOptionalNumber('BULL_MARKET_THRESHOLD_PERCENT'),
   },
   database: {
     url: process.env.DATABASE_URL,
@@ -84,6 +126,6 @@ export default () => ({
     sessionTtlHours: parseInt(process.env.DASHBOARD_SESSION_TTL_HOURS || '12'),
   },
   dashboard: {
-    voiceAlertsEnabled: false,
+    voiceAlertsEnabled: readOptionalBoolean('VOICE_ALERTS_ENABLED'),
   },
 });

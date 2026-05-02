@@ -153,7 +153,9 @@ export class MarketDataService implements OnModuleInit {
 
     try {
       const now = Date.now();
-      const startTime = now - 49 * 5 * 60 * 1000;
+      const candleLookback = this.config.get<number>('scan.candleLookback');
+      const requiredCandles = Math.max(candleLookback + 1, 25);
+      const startTime = now - requiredCandles * 5 * 60 * 1000;
       const res = await http.post('/info', {
         type: 'candleSnapshot',
         req: {
