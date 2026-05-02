@@ -25,9 +25,13 @@ export class ExecutionService {
     const effectiveNotional = Math.max(notional, minOrderNotional, exchangeMinOrderNotional);
     const effectiveMargin = effectiveNotional / leverage;
 
-    // Standard perp accounts should trade in isolated mode.
-    // Unified/portfolio-margin accounts stay on cross because collateral is shared account-wide.
-    await this.hl.setLeverage(token, leverage);
+    // The bot now trades isolated only.
+    // If the exchange account cannot confirm isolated mode, refuse to place the order.
+    const isolatedReady = await this.hl.setLeverage(token, leverage);
+    if (!isolatedReady) {
+      this.logger.error(`Refusing to open ${direction} ${token}: isolated leverage setup failed`);
+      return null;
+    }
 
     const isBuy = direction === 'long';
     const sz = this.calculateSize(effectiveNotional, currentPrice);

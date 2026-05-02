@@ -135,20 +135,29 @@ export class HyperliquidClient implements OnModuleInit {
     }
   }
 
-  async setLeverage(coin: string, leverage: number): Promise<void> {
-    if (!await this.ensureReady()) return;
+  async setLeverage(coin: string, leverage: number): Promise<boolean> {
+    if (!await this.ensureReady()) return false;
     const http = this.http!;
     const asset = this.assets.get(coin);
     if (!asset) {
-      return;
+      return false;
+    }
+
+    await this.ensureAccountAbstraction();
+    if (this.usesUnifiedCollateral()) {
+      this.logger.error(
+        `Refusing isolated leverage update for ${coin}: account abstraction is ${this.accountAbstraction}. ` +
+        'This account is using unified collateral, so the bot will not place a cross trade silently.',
+      );
+      return false;
     }
 
     const current = await this.getActiveAssetData(coin);
-    const isCross = this.usesUnifiedCollateral();
-    const targetMode = isCross ? 'cross' : 'isolated';
+    const isCross = false;
+    const targetMode = 'isolated';
     if (current?.leverage?.value === leverage && current.leverage.type === targetMode) {
       this.logger.log(`setLeverage skipped for ${coin}: already ${current.leverage.type} ${leverage}x`);
-      return;
+      return true;
     }
 
     const vaultAddress = this.getVaultAddress();
@@ -156,11 +165,22 @@ export class HyperliquidClient implements OnModuleInit {
     try {
       const { sig, nonce } = await this.signL1Action(action, vaultAddress);
       await http.post('/exchange', { action, nonce, signature: sig, vaultAddress });
-      this.logger.log(`setLeverage applied for ${coin}: ${targetMode} ${leverage}x`);
+      const updated = await this.getActiveAssetData(coin);
+      if (updated?.leverage?.value === leverage && updated.leverage.type === targetMode) {
+        this.logger.log(`setLeverage applied for ${coin}: ${targetMode} ${leverage}x`);
+        return true;
+      }
+
+      this.logger.warn(
+        `setLeverage could not confirm isolated mode for ${coin}: expected ${targetMode} ${leverage}x, ` +
+        `got ${updated?.leverage?.type ?? 'unknown'} ${updated?.leverage?.value ?? 'unknown'}x`,
+      );
+      return false;
     } catch (err) {
       this.logger.warn(
         `setLeverage failed for ${coin}: ${this.formatAxiosError(err)} | action=${JSON.stringify(action)}`,
       );
+      return false;
     }
   }
 

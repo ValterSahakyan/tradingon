@@ -137,7 +137,40 @@ export class DashboardService {
   }
 
   getRecentSignals() {
-    return this.recentSignals.slice(0, 20);
+    const persisted = this.recentSignals.slice(0, 20);
+    const fallbackFromCurrentScan = this.signal
+      .getLastCandidates()
+      .filter((candidate) => candidate.tradable && candidate.direction !== null)
+      .map((candidate) => ({
+        token: candidate.token,
+        direction: candidate.direction!,
+        score: candidate.score,
+        patternsFired: candidate.patternsFired,
+        currentPrice: candidate.currentPrice,
+        suggestedMargin: 0,
+        notional: 0,
+        stopPrice: 0,
+        tp1Price: 0,
+        tp2Price: 0,
+        marketCondition: candidate.marketCondition,
+        timestamp: candidate.timestamp,
+      }));
+
+    const merged = [...persisted];
+    const seen = new Set(merged.map((signal) => `${signal.token}:${signal.direction}`));
+
+    for (const signal of fallbackFromCurrentScan) {
+      const key = `${signal.token}:${signal.direction}`;
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      merged.push(signal);
+    }
+
+    return merged
+      .sort((left, right) => right.timestamp - left.timestamp)
+      .slice(0, 20);
   }
 
   getWatchlist() {
