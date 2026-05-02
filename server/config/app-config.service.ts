@@ -41,6 +41,15 @@ export class AppConfigService implements OnModuleInit {
       if (raw != null) {
         return this.parseValue(field.type, raw) as T;
       }
+
+      if (field.editable) {
+        if (this.ready) {
+          throw new Error(`Missing DB-backed setting value for ${field.key} (${field.path})`);
+        }
+
+        // During bootstrap, fall back to the base config only until DB-backed values are loaded.
+        return this.config.get<T>(path);
+      }
     }
 
     return this.config.get<T>(path);
@@ -102,6 +111,7 @@ export class AppConfigService implements OnModuleInit {
       await this.loadValues();
       await this.seedMissingValues();
       await this.loadValues();
+      this.assertEditableSettingsPresent();
     } catch (err) {
       this.initError = err.message;
       this.logger.error(`Failed to initialize app settings: ${err.message}`);
@@ -145,6 +155,16 @@ export class AppConfigService implements OnModuleInit {
         "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
     `);
+  }
+
+  private assertEditableSettingsPresent(): void {
+    const missing = APP_SETTING_FIELDS
+      .filter((field) => field.editable && !this.values.has(field.key))
+      .map((field) => `${field.key} (${field.path})`);
+
+    if (missing.length) {
+      throw new Error(`Missing DB-backed app settings: ${missing.join(', ')}`);
+    }
   }
 
   private parseValue(type: SettingFieldType, raw: string): unknown {
@@ -227,6 +247,14 @@ export class AppConfigService implements OnModuleInit {
       const numeric = Number(value);
       if (!Number.isFinite(numeric) || numeric <= 0 || numeric > 0.1) {
         throw new BadRequestException('Market Order Slippage must be > 0 and <= 0.1');
+      }
+      return;
+    }
+
+    if (key === 'leverage') {
+      const numeric = Number(value);
+      if (!Number.isFinite(numeric) || numeric < 1) {
+        throw new BadRequestException('Leverage must be greater than or equal to 1');
       }
     }
   }

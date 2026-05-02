@@ -309,7 +309,7 @@ export class PositionManagerService implements OnModuleInit {
           currentPrice: entryPx,
           margin: parseFloat(p.marginUsed ?? '0'),
           notional,
-          leverage: p.leverage?.value ?? 3,
+          leverage: p.leverage?.value ?? this.config.get<number>('capital.leverage'),
           size: absSz,
           unrealizedPnl: parseFloat(p.unrealizedPnl ?? '0'),
           realizedPnl: 0,
