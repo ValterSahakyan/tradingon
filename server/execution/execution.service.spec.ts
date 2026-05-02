@@ -89,6 +89,44 @@ describe('ExecutionService', () => {
     expect(result?.tp2Price).toBeCloseTo(11.4);
   });
 
+  it('bumps orders to the exchange minimum when config is lower', async () => {
+    config.get.mockImplementation((key: string) => {
+      const values: Record<string, unknown> = {
+        'execution.enabled': true,
+        'execution.allowMainnet': true,
+        'hyperliquid.testnet': false,
+        'capital.leverage': 5,
+        'capital.minOrderNotional': 5,
+      };
+      return values[key];
+    });
+
+    hl.placeMarketOrder.mockImplementation(() => Promise.resolve({
+      status: 'filled',
+      avgPx: 2,
+      totalSz: 5,
+    }));
+
+    const result = await service.openPosition({
+      token: 'POL',
+      direction: 'long',
+      score: 2,
+      patternsFired: ['volume_spike'],
+      currentPrice: 2,
+      suggestedMargin: 1,
+      notional: 5,
+      stopPrice: 1.8,
+      tp1Price: 2.1,
+      tp2Price: 2.2,
+      marketCondition: 'sideways',
+    });
+
+    expect(hl.placeMarketOrder).toHaveBeenCalledWith('POL', true, 5);
+    expect(result).not.toBeNull();
+    expect(result?.margin).toBe(2);
+    expect(result?.notional).toBe(10);
+  });
+
   it('refuses to open positions on mainnet when second safety gate is off', async () => {
     config.get.mockImplementation((key: string) => {
       const values: Record<string, unknown> = {

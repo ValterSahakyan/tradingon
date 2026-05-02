@@ -6,6 +6,7 @@ import { OpenPosition, TradeSignal } from '../common/types';
 @Injectable()
 export class ExecutionService {
   private readonly logger = new Logger(ExecutionService.name);
+  private static readonly HYPERLIQUID_MIN_ORDER_NOTIONAL = 10;
 
   constructor(
     private readonly config: AppConfigService,
@@ -20,7 +21,8 @@ export class ExecutionService {
     const { token, direction, currentPrice, notional } = signal;
     const leverage = this.config.get<number>('capital.leverage');
     const minOrderNotional = this.config.get<number>('capital.minOrderNotional');
-    const effectiveNotional = Math.max(notional, minOrderNotional);
+    const exchangeMinOrderNotional = ExecutionService.HYPERLIQUID_MIN_ORDER_NOTIONAL;
+    const effectiveNotional = Math.max(notional, minOrderNotional, exchangeMinOrderNotional);
     const effectiveMargin = effectiveNotional / leverage;
 
     // Always set isolated margin + leverage before entering
@@ -36,7 +38,7 @@ export class ExecutionService {
 
     if (effectiveNotional > notional) {
       this.logger.log(
-        `Bumping ${token} order size from $${notional.toFixed(2)} to $${effectiveNotional.toFixed(2)} to satisfy minimum order notional`,
+        `Bumping ${token} order size from $${notional.toFixed(2)} to $${effectiveNotional.toFixed(2)} to satisfy minimum order notional (config=$${minOrderNotional.toFixed(2)}, exchange=$${exchangeMinOrderNotional.toFixed(2)})`,
       );
     }
 

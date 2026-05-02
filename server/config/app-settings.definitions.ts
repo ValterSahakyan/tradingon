@@ -177,7 +177,7 @@ export const APP_SETTING_FIELDS: SettingField[] = [
     label: 'Min Order Notional',
     section: 'Capital',
     editable: true,
-    help: 'Minimum live order size in USDC notional. Signals smaller than this are automatically bumped up.',
+    help: 'Minimum live order size in USDC notional. Signals smaller than this are automatically bumped up, and Hyperliquid orders are never sent below the $10 exchange minimum.',
   }),
   field({
     key: 'marginScore2',
