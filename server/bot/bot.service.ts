@@ -126,6 +126,12 @@ export class BotService implements OnModuleInit {
     await this.positions.checkTimeStops();
 
     const liveTradingEnabled = this.config.get<boolean>('execution.enabled');
+    const maxPositions = this.config.get<number>('capital.maxConcurrentPositions');
+    const currentPositions = this.positions.getPositionCount();
+
+    this.logger.log(
+      `Scan cycle starting | live=${liveTradingEnabled} | positions=${currentPositions}/${maxPositions} | market=${this.marketData.getMarketCondition()}`,
+    );
 
     const capital = await this.execution.getAccountValue();
     if (capital !== null) {
@@ -150,7 +156,6 @@ export class BotService implements OnModuleInit {
     }
 
     const openTokens = this.positions.getOpenTokens();
-    const maxPositions = this.config.get<number>('capital.maxConcurrentPositions');
     const availableSlots = maxPositions - this.positions.getPositionCount();
 
     if (availableSlots <= 0) {
@@ -159,11 +164,29 @@ export class BotService implements OnModuleInit {
     }
 
     const signals = await this.signal.scanAll(openTokens);
+    const diagnostics = this.signal.getLastDiagnostics();
+    const rejectSummary = Object.entries(diagnostics.rejectReasons)
+      .sort((left, right) => right[1] - left[1])
+      .slice(0, 5)
+      .map(([key, count]) => `${key}:${count}`)
+      .join(', ');
+
+    this.logger.log(
+      `Scan results | signals=${signals.length} | watched=${diagnostics.candidatesFound} | evaluated=${diagnostics.tokensEvaluated}/${diagnostics.tokensSeen} | rejects=${rejectSummary || 'none'}`,
+    );
+
     if (signals.length > 0) {
       this.dashboard.pushSignals(signals);
+    } else {
+      this.logger.log('No tradable signals in current scan; dashboard history may still show older confirmed entries.');
     }
 
     const ranked = signals.sort((a, b) => b.score - a.score).slice(0, availableSlots);
+    if (ranked.length > 0) {
+      this.logger.log(
+        `Ranked entry candidates: ${ranked.map((signal) => `${signal.token}:${signal.direction}:score${signal.score}`).join(', ')}`,
+      );
+    }
 
     for (const signal of ranked) {
       const { allowed: canOpen, reason: blockReason } = await this.risk.canTrade();
@@ -172,9 +195,14 @@ export class BotService implements OnModuleInit {
         break;
       }
 
+      this.logger.log(
+        `Attempting entry | token=${signal.token} | dir=${signal.direction} | score=${signal.score} | price=${signal.currentPrice} | notional=${signal.notional.toFixed(2)}`,
+      );
       const opened = await this.positions.openTrade(signal);
       if (opened) {
         this.logger.log(`Trade opened: ${signal.token} ${signal.direction} score=${signal.score}`);
+      } else {
+        this.logger.warn(`Entry attempt did not open a position: ${signal.token} ${signal.direction} score=${signal.score}`);
       }
     }
   }

@@ -60,12 +60,21 @@ export class PositionManagerService implements OnModuleInit {
       return false;
     }
 
+    this.logger.log(
+      `Open trade requested | token=${signal.token} | dir=${signal.direction} | score=${signal.score} | stop=${signal.stopPrice} | tp1=${signal.tp1Price} | tp2=${signal.tp2Price}`,
+    );
     const position = await this.execution.openPosition(signal);
-    if (!position) return false;
+    if (!position) {
+      this.logger.warn(`Execution returned no position for ${signal.token} ${signal.direction} score=${signal.score}`);
+      return false;
+    }
 
     const tradeLogId = await this.logging.logTradeOpen(signal, position);
     this.positions.set(signal.token, position);
     this.tradeLogIds.set(position.id, tradeLogId);
+    this.logger.log(
+      `Position tracked locally | token=${position.token} | dir=${position.direction} | entry=${position.entryPrice} | size=${position.size} | openCount=${this.positions.size}`,
+    );
     return true;
   }
 

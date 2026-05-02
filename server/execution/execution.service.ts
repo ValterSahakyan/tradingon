@@ -44,10 +44,19 @@ export class ExecutionService {
       `Opening ${direction} ${token} | targetNotional=$${effectiveNotional.toFixed(2)} | leverage=${leverage}x | size=${sz}`,
     );
     const result = await this.hl.placeMarketOrder(token, isBuy, sz);
-    if (!result || result.status === 'rejected') {
+    if (!result) {
+      this.logger.error(`Order failed for ${token} - no exchange result returned`);
+      return null;
+    }
+
+    if (result.status === 'rejected') {
       this.logger.error(`Order rejected for ${token}`);
       return null;
     }
+
+    this.logger.log(
+      `Exchange order result | token=${token} | status=${result.status} | avgPx=${result.avgPx ?? 0} | totalSz=${result.totalSz ?? 0}`,
+    );
 
     // Use actual fill price from the exchange response.
     // Fall back to mid-price only if avgPx is missing (resting IOC edge case).
