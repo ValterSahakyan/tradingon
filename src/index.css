@@ -186,8 +186,38 @@ textarea {
   font-weight: 700;
 }
 
+.wallet-chip--address {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .version-chip {
   color: var(--accent);
+}
+
+.wallet-menu {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.wallet-menu__label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.wallet-menu__disconnect {
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
 }
 
 .portfolio-header {
@@ -196,6 +226,13 @@ textarea {
   justify-content: space-between;
   gap: 24px;
   padding: 30px 0 24px;
+}
+
+.portfolio-summary {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 14px;
 }
 
 .kicker,
@@ -274,7 +311,7 @@ button:disabled {
 
 .hero {
   display: grid;
-  grid-template-columns: minmax(320px, 0.48fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1.45fr) minmax(320px, 0.7fr);
   gap: 14px;
 }
 
@@ -313,6 +350,18 @@ button:disabled {
 
 .hero-card--compact {
   min-height: 146px;
+}
+
+.hero-card--chart {
+  min-height: 560px;
+}
+
+.hero-card--insight {
+  min-height: 0;
+}
+
+.hero-side--portfolio {
+  grid-auto-rows: minmax(0, auto);
 }
 
 .panel-head,
@@ -391,12 +440,51 @@ button:disabled {
   padding: 16px;
 }
 
+.metric--summary {
+  min-height: 140px;
+}
+
+.metric-value--summary {
+  font-size: clamp(22px, 2vw, 30px);
+}
+
 .hero-chart-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
   margin: 8px 0 10px;
+}
+
+.portfolio-chart-headline {
+  align-items: flex-start;
+}
+
+.portfolio-chart-metrics {
+  display: flex;
+  align-items: flex-start;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.portfolio-chart-metrics strong {
+  display: block;
+  margin-top: 6px;
+  font-size: 18px;
+}
+
+.portfolio-chart-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.chart-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
 }
 
 .chart-tab,
@@ -429,13 +517,79 @@ button:disabled {
 }
 
 .chart--embedded {
-  height: 246px;
+  height: 360px;
 }
 
 .chart svg {
   width: 100%;
   height: 100%;
   overflow: visible;
+}
+
+.portfolio-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.portfolio-list-card {
+  min-height: 240px;
+}
+
+.portfolio-mini-list {
+  display: grid;
+  gap: 12px;
+}
+
+.portfolio-mini-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(111, 183, 171, 0.08);
+}
+
+.portfolio-mini-row strong {
+  display: block;
+  font-size: 14px;
+}
+
+.portfolio-mini-row__value {
+  font-size: 14px;
+  font-weight: 700;
+  text-align: right;
+}
+
+.insight-rows {
+  display: grid;
+  gap: 10px;
+}
+
+.insight-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(111, 183, 171, 0.08);
+}
+
+.insight-row:last-child {
+  border-bottom: 0;
+}
+
+.insight-row span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.insight-row strong {
+  font-size: 14px;
+  text-align: right;
 }
 
 .pill {
@@ -461,11 +615,6 @@ button:disabled {
 
 .pill.neutral {
   color: var(--accent);
-}
-
-.panel--auth-bar {
-  margin-bottom: 14px;
-  padding: 16px 20px;
 }
 
 .layout {
@@ -871,6 +1020,11 @@ select:disabled {
 }
 
 @media (max-width: 1180px) {
+  .portfolio-summary,
+  .portfolio-detail-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .hero,
   .layout--secondary {
     grid-template-columns: 1fr;
@@ -904,8 +1058,14 @@ select:disabled {
     padding: 18px;
   }
 
+  .portfolio-summary,
+  .portfolio-detail-grid,
   .config-grid,
   .hero-grid--portfolio {
     grid-template-columns: 1fr;
+  }
+
+  .portfolio-chart-metrics {
+    gap: 14px;
   }
 }

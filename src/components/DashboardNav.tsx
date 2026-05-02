@@ -6,6 +6,9 @@ interface Props {
   version: string
   runtime: RuntimeInfo | null
   status: BotStatus | null
+  connectedAddress: string | null
+  showWallet: boolean
+  onDisconnect: () => void
 }
 
 const NAV_ITEMS: Array<{ id: DashboardPage; label: string }> = [
@@ -22,6 +25,9 @@ export default function DashboardNav({
   version,
   runtime,
   status,
+  connectedAddress,
+  showWallet,
+  onDisconnect,
 }: Props) {
   return (
     <section className="portfolio-hero">
@@ -45,6 +51,15 @@ export default function DashboardNav({
         </div>
 
         <div className="portfolio-nav-actions">
+          {showWallet && (
+            <div className="wallet-menu">
+              <div className="wallet-menu__label">Connected wallet</div>
+              <div className="wallet-chip wallet-chip--address mono">{connectedAddress ?? '-'}</div>
+              <button type="button" className="wallet-menu__disconnect" onClick={onDisconnect}>
+                Disconnect
+              </button>
+            </div>
+          )}
           <div className="version-chip">v{version}</div>
           <div className="wallet-chip">
             {runtime ? runtime.mode.toUpperCase() : 'MODE'} | {status ? status.state.replaceAll('_', ' ') : 'loading'}

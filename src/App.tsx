@@ -340,28 +340,6 @@ export default function App() {
     window.location.hash = nextHash
   }, [])
 
-  const pageTitle =
-    currentPage === 'portfolio'
-      ? 'Portfolio'
-      : currentPage === 'positions'
-        ? 'Positions'
-        : currentPage === 'trades'
-          ? 'Trades'
-          : currentPage === 'signals'
-            ? 'Signals'
-            : 'Config'
-
-  const pageDescription =
-    currentPage === 'portfolio'
-      ? 'High-level portfolio and runtime overview.'
-      : currentPage === 'positions'
-        ? 'Open position monitoring and execution context.'
-        : currentPage === 'trades'
-          ? 'Recent closed trades and trade performance history.'
-          : currentPage === 'signals'
-            ? 'Confirmed signals plus current scan candidates.'
-            : 'Database-backed operator settings.'
-
   if (!sessionChecked) {
     return (
       <main className="auth-shell">
@@ -395,27 +373,10 @@ export default function App() {
         version={dashboard?.meta?.version ?? '-'}
         runtime={runtime}
         status={dashboard?.status ?? null}
+        connectedAddress={connectedAddress}
+        showWallet={session?.authEnabled !== false}
+        onDisconnect={handleLogout}
       />
-
-      {session?.authEnabled !== false && (
-        <section className="panel panel--auth-bar">
-          <div className="auth-bar">
-            <div>
-              <div className="mini">Connected wallet</div>
-              <div className="panel-title mono">{connectedAddress ?? '-'}</div>
-            </div>
-            <button className="btn-secondary" onClick={handleLogout}>Disconnect</button>
-          </div>
-        </section>
-      )}
-
-      {currentPage !== 'portfolio' && (
-        <section className="page-intro panel">
-          <div className="kicker">{pageTitle}</div>
-          <h2>{pageTitle}</h2>
-          <p>{pageDescription}</p>
-        </section>
-      )}
 
       {currentPage === 'portfolio' && (
         <HeroSection
