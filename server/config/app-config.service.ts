@@ -64,6 +64,7 @@ export class AppConfigService implements OnModuleInit {
     await this.waitUntilReady();
     await this.ensureSchema();
     const updatedKeys: string[] = [];
+    const pendingValues = new Map<string, string>();
 
     for (const [key, rawValue] of Object.entries(values)) {
       const field = APP_SETTING_FIELD_BY_KEY.get(key);
@@ -75,7 +76,19 @@ export class AppConfigService implements OnModuleInit {
       }
 
       const value = this.serializeValue(field, rawValue);
-      this.validateSettingValue(field.key, value);
+      pendingValues.set(field.key, value);
+    }
+
+    for (const [key, value] of pendingValues.entries()) {
+      this.validateSettingValue(key, value, pendingValues);
+    }
+
+    for (const [key, value] of pendingValues.entries()) {
+      const field = APP_SETTING_FIELD_BY_KEY.get(key);
+      if (!field) {
+        continue;
+      }
+
       await this.settingsRepo.upsert({ key: field.key, value }, ['key']);
       this.values.set(field.key, value);
       updatedKeys.push(field.key);
@@ -231,7 +244,7 @@ export class AppConfigService implements OnModuleInit {
     return rawValue;
   }
 
-  private validateSettingValue(key: string, value: string): void {
+  private validateSettingValue(key: string, value: string, pendingValues?: Map<string, string>): void {
     if (key === 'hyperliquidPrivateKey') {
       if (!/^0x[a-fA-F0-9]{64}$/.test(value.trim())) {
         throw new BadRequestException(
@@ -301,9 +314,27 @@ export class AppConfigService implements OnModuleInit {
       if (!Number.isFinite(numeric) || numeric < 0 || numeric > 100) {
         throw new BadRequestException('TP close percentages must be between 0 and 100');
       }
-      const tp1 = key === 'tp1ClosePercent' ? numeric : Number(this.values.get('tp1ClosePercent') ?? this.config.get<number>('exits.tp1ClosePercent') ?? 0);
-      const tp2 = key === 'tp2ClosePercent' ? numeric : Number(this.values.get('tp2ClosePercent') ?? this.config.get<number>('exits.tp2ClosePercent') ?? 0);
-      const tp3 = key === 'tp3ClosePercent' ? numeric : Number(this.values.get('tp3ClosePercent') ?? this.config.get<number>('exits.tp3ClosePercent') ?? 0);
+      const getPercent = (fieldKey: 'tp1ClosePercent' | 'tp2ClosePercent' | 'tp3ClosePercent'): number => {
+        if (fieldKey === key) {
+          return numeric;
+        }
+
+        const pending = pendingValues?.get(fieldKey);
+        if (pending != null) {
+          return Number(pending);
+        }
+
+        const stored = this.values.get(fieldKey);
+        if (stored != null) {
+          return Number(stored);
+        }
+
+        return Number(this.config.get<number>(`exits.${fieldKey}`) ?? 0);
+      };
+
+      const tp1 = getPercent('tp1ClosePercent');
+      const tp2 = getPercent('tp2ClosePercent');
+      const tp3 = getPercent('tp3ClosePercent');
       const total = tp1 + tp2 + tp3;
       if (Math.abs(total - 100) > 0.0001) {
         throw new BadRequestException('TP1 Close %, TP2 Close %, and TP3 Close % must add up to 100');
