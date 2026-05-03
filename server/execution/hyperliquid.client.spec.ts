@@ -57,3 +57,28 @@ describe('HyperliquidClient placeMarketOrder', () => {
     ]);
   });
 });
+
+describe('HyperliquidClient setLeverage', () => {
+  it('accepts unified accounts in cross mode when leverage already matches', async () => {
+    const client = new HyperliquidClient({} as any) as any;
+
+    client.http = {
+      post: jest.fn(),
+    };
+    client.assets = new Map([
+      ['FTT', { index: 51, szDecimals: 1 }],
+    ]);
+    client.ensureReady = jest.fn(async () => true);
+    client.ensureAccountAbstraction = jest.fn(async () => {
+      client.accountAbstraction = 'unifiedAccount';
+    });
+    client.getActiveAssetData = jest.fn(async () => ({
+      leverage: { type: 'cross', value: 3 },
+    }));
+
+    const result = await client.setLeverage('FTT', 3);
+
+    expect(result).toBe(true);
+    expect(client.http.post).not.toHaveBeenCalled();
+  });
+});

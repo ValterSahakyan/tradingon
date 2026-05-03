@@ -60,7 +60,7 @@ export default () => ({
     privateKey: readOptionalString('HYPERLIQUID_PRIVATE_KEY'),
     accountAddress: readOptionalString('HYPERLIQUID_ACCOUNT_ADDRESS') ?? null,
     testnet: readOptionalBoolean('HYPERLIQUID_TESTNET'),
-    marketOrderSlippage: readOptionalNumber('HYPERLIQUID_MARKET_ORDER_SLIPPAGE'),
+    marketOrderSlippage: readOptionalNumber('HYPERLIQUID_MARKET_ORDER_SLIPPAGE') ?? 0.01,
     apiUrl: readOptionalString('HYPERLIQUID_API_URL'),
     wsUrl: readOptionalString('HYPERLIQUID_WS_URL'),
   },
@@ -126,6 +126,6 @@ export default () => ({
     sessionTtlHours: parseInt(process.env.DASHBOARD_SESSION_TTL_HOURS || '12'),
   },
   dashboard: {
-    voiceAlertsEnabled: readOptionalBoolean('VOICE_ALERTS_ENABLED'),
+    voiceAlertsEnabled: readOptionalBoolean('VOICE_ALERTS_ENABLED') ?? false,
   },
 });

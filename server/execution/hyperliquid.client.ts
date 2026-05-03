@@ -152,17 +152,10 @@ export class HyperliquidClient implements OnModuleInit {
     }
 
     await this.ensureAccountAbstraction();
-    if (this.usesUnifiedCollateral()) {
-      this.logger.error(
-        `Refusing isolated leverage update for ${coin}: account abstraction is ${this.accountAbstraction}. ` +
-        'This account is using unified collateral, so the bot will not place a cross trade silently.',
-      );
-      return false;
-    }
-
     const current = await this.getActiveAssetData(coin);
-    const isCross = false;
-    const targetMode = 'isolated';
+    const unifiedAccount = this.usesUnifiedCollateral();
+    const isCross = unifiedAccount;
+    const targetMode = unifiedAccount ? 'cross' : 'isolated';
     if (current?.leverage?.value === leverage && current.leverage.type === targetMode) {
       this.logger.log(`setLeverage skipped for ${coin}: already ${current.leverage.type} ${leverage}x`);
       return true;

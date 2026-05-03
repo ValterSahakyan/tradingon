@@ -11,14 +11,16 @@ export class HealthController {
 
   @Get()
   getHealth() {
+    const configError = this.config.getInitError();
+    const configReady = this.config.isReady() && !configError;
     return {
-      status: this.dataSource.isInitialized && this.config.isReady() ? 'ok' : 'degraded',
+      status: this.dataSource.isInitialized && configReady ? 'ok' : 'degraded',
       timestamp: Date.now(),
       services: {
         database: this.dataSource.isInitialized ? 'up' : 'down',
-        config: this.config.isReady() ? 'ready' : 'loading',
+        config: configReady ? 'ready' : this.config.isReady() ? 'error' : 'loading',
       },
-      configError: this.config.getInitError(),
+      configError,
     };
   }
 }
