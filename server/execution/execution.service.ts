@@ -21,6 +21,7 @@ export class ExecutionService {
     const { token, direction, currentPrice, notional } = signal;
     const leverage = this.config.get<number>('capital.leverage');
     const minOrderNotional = this.config.get<number>('capital.minOrderNotional');
+    const freeCollateralBufferUsd = this.config.get<number>('capital.freeCollateralBufferUsd');
     const exchangeMinOrderNotional = ExecutionService.HYPERLIQUID_MIN_ORDER_NOTIONAL;
     const effectiveNotional = Math.max(notional, minOrderNotional, exchangeMinOrderNotional);
     const effectiveMargin = effectiveNotional / leverage;
@@ -35,10 +36,23 @@ export class ExecutionService {
 
     const isBuy = direction === 'long';
     const sz = this.calculateSize(effectiveNotional, currentPrice);
+    const availableCollateral = await this.hl.getAvailableCollateral();
 
     if (sz <= 0) {
       this.logger.warn(`Zero size for ${token} — skipping`);
       return null;
+    }
+
+    if (availableCollateral !== null) {
+      const requiredCollateral = effectiveMargin + freeCollateralBufferUsd;
+      if (availableCollateral < requiredCollateral) {
+        this.logger.warn(
+          `Skipping ${token} ${direction}: available collateral $${availableCollateral.toFixed(2)} ` +
+          `is below required $${requiredCollateral.toFixed(2)} ` +
+          `(entryMargin=$${effectiveMargin.toFixed(2)}, buffer=$${freeCollateralBufferUsd.toFixed(2)})`,
+        );
+        return null;
+      }
     }
 
     if (effectiveNotional > notional) {
@@ -147,6 +161,10 @@ export class ExecutionService {
 
   async getSpotUsdcBalance(): Promise<number | null> {
     return this.hl.getSpotUsdcBalance();
+  }
+
+  async getAvailableCollateral(): Promise<number | null> {
+    return this.hl.getAvailableCollateral();
   }
 
   async getPortfolio(): Promise<Record<string, { accountValueHistory: Array<[number, string]>; pnlHistory: Array<[number, string]>; vlm: string }> | null> {

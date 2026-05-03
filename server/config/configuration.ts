@@ -73,6 +73,7 @@ export default () => ({
     marginScore2: readOptionalNumber('MARGIN_SCORE_2'),
     marginScore3: readOptionalNumber('MARGIN_SCORE_3'),
     marginScore4: readOptionalNumber('MARGIN_SCORE_4'),
+    freeCollateralBufferUsd: readOptionalNumber('FREE_COLLATERAL_BUFFER_USD') ?? 1,
   },
   exits: {
     stopLossPercent: readOptionalNumber('STOP_LOSS_PERCENT'),

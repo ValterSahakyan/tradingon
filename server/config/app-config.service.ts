@@ -264,6 +264,14 @@ export class AppConfigService implements OnModuleInit {
       if (!Number.isFinite(numeric) || numeric < 1) {
         throw new BadRequestException('Leverage must be greater than or equal to 1');
       }
+      return;
+    }
+
+    if (key === 'freeCollateralBufferUsd') {
+      const numeric = Number(value);
+      if (!Number.isFinite(numeric) || numeric < 0 || numeric > 1000) {
+        throw new BadRequestException('Free Collateral Buffer USD must be between 0 and 1000');
+      }
     }
   }
 }

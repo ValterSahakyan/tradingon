@@ -333,6 +333,7 @@ button:disabled {
   display: grid;
   grid-template-columns: minmax(0, 1.45fr) minmax(320px, 0.7fr);
   gap: 14px;
+  align-items: start;
 }
 
 .hero-side,
@@ -373,7 +374,7 @@ button:disabled {
 }
 
 .hero-card--chart {
-  min-height: 560px;
+  min-height: 0;
 }
 
 .hero-card--insight {

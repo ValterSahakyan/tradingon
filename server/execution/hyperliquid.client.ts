@@ -367,6 +367,39 @@ export class HyperliquidClient implements OnModuleInit {
     return this.accountAddress ?? this.wallet?.address ?? null;
   }
 
+  async getAvailableCollateral(): Promise<number | null> {
+    const http = await this.getHttp();
+    const queryAddress = this.accountAddress ?? this.wallet?.address;
+    if (!http || !queryAddress) {
+      return null;
+    }
+
+    try {
+      await this.ensureAccountAbstraction();
+
+      if (this.usesUnifiedCollateral()) {
+        const spotRes = await http.post('/info', { type: 'spotClearinghouseState', user: queryAddress });
+        const availableEntries: unknown[] = Array.isArray(spotRes.data?.tokenToAvailableAfterMaintenance)
+          ? spotRes.data.tokenToAvailableAfterMaintenance
+          : [];
+        const usdcEntry = availableEntries.find((entry) =>
+          Array.isArray(entry) && String(entry[0]) === '0',
+        );
+        const available = Array.isArray(usdcEntry) ? Number(usdcEntry[1] ?? 0) : 0;
+        this.logger.log(`Available collateral (unified) - after maintenance: $${available.toFixed(4)}`);
+        return Number.isFinite(available) ? available : null;
+      }
+
+      const perpRes = await http.post('/info', { type: 'clearinghouseState', user: queryAddress });
+      const withdrawable = Number(perpRes.data?.withdrawable ?? 0);
+      this.logger.log(`Available collateral (perp) - withdrawable: $${withdrawable.toFixed(4)}`);
+      return Number.isFinite(withdrawable) ? withdrawable : null;
+    } catch (err) {
+      this.logger.warn(`getAvailableCollateral failed: ${this.formatAxiosError(err)}`);
+      return null;
+    }
+  }
+
   async getPortfolio(): Promise<Record<string, PortfolioWindow> | null> {
     const cacheAge = Date.now() - this.cachedPortfolioAt;
     if (this.cachedPortfolio && cacheAge < 20_000) {

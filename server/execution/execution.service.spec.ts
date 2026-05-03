@@ -16,6 +16,7 @@ describe('ExecutionService', () => {
           'hyperliquid.testnet': false,
           'capital.leverage': 3,
           'capital.minOrderNotional': 10,
+          'capital.freeCollateralBufferUsd': 1,
         };
         return values[key];
       }) as any),
@@ -26,6 +27,7 @@ describe('ExecutionService', () => {
       placeMarketOrder: jest.fn() as any,
       getMidPrice: jest.fn() as any,
       getAccountValue: jest.fn() as any,
+      getAvailableCollateral: jest.fn(() => Promise.resolve(100)) as any,
     };
 
     service = new ExecutionService(config as unknown as AppConfigService, hl as any);
@@ -97,6 +99,7 @@ describe('ExecutionService', () => {
         'hyperliquid.testnet': false,
         'capital.leverage': 5,
         'capital.minOrderNotional': 5,
+        'capital.freeCollateralBufferUsd': 1,
       };
       return values[key];
     });
@@ -157,6 +160,7 @@ describe('ExecutionService', () => {
         'hyperliquid.testnet': false,
         'capital.leverage': 3,
         'capital.minOrderNotional': 10,
+        'capital.freeCollateralBufferUsd': 1,
       };
       return values[key];
     });
@@ -185,6 +189,7 @@ describe('ExecutionService', () => {
       if (key === 'execution.enabled') return false;
       if (key === 'exits.stopLossPercent') return 7;
       if (key === 'capital.leverage') return 3;
+      if (key === 'capital.freeCollateralBufferUsd') return 1;
       return undefined;
     });
 
@@ -231,6 +236,7 @@ describe('ExecutionService', () => {
         'hyperliquid.testnet': false,
         'capital.leverage': 3,
         'capital.minOrderNotional': 10,
+        'capital.freeCollateralBufferUsd': 1,
       };
       return values[key];
     });
@@ -265,6 +271,27 @@ describe('ExecutionService', () => {
       1,
       'TP1',
     );
+
+    expect(result).toBeNull();
+    expect(hl.placeMarketOrder).not.toHaveBeenCalled();
+  });
+
+  it('skips opening when exchange-reported free collateral is too low', async () => {
+    hl.getAvailableCollateral.mockResolvedValue(3);
+
+    const result = await service.openPosition({
+      token: 'ASTER',
+      direction: 'long',
+      score: 2,
+      patternsFired: ['volume_spike'],
+      currentPrice: 1,
+      suggestedMargin: 3,
+      notional: 10,
+      stopPrice: 0.9,
+      tp1Price: 1.1,
+      tp2Price: 1.2,
+      marketCondition: 'sideways',
+    });
 
     expect(result).toBeNull();
     expect(hl.placeMarketOrder).not.toHaveBeenCalled();

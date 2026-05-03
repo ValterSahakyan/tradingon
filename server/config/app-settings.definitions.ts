@@ -237,6 +237,16 @@ export const APP_SETTING_FIELDS: SettingField[] = [
     editable: true,
   }),
   field({
+    key: 'freeCollateralBufferUsd',
+    env: null,
+    path: 'capital.freeCollateralBufferUsd',
+    type: 'number',
+    label: 'Free Collateral Buffer USD',
+    section: 'Capital',
+    editable: true,
+    help: 'Minimum collateral to leave unused after opening a new trade. Prevents exchange-side insufficient margin rejections when funds are already reserved.',
+  }),
+  field({
     key: 'stopLossPercent',
     env: 'STOP_LOSS_PERCENT',
     path: 'exits.stopLossPercent',
