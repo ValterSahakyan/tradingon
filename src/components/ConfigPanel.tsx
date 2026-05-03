@@ -39,7 +39,7 @@ export default function ConfigPanel({ sections, onSave, onReload }: Props) {
     <div className="panel">
       <div className="panel-head">
         <div className="panel-title">Configuration</div>
-        <div className="mini">Saved to <span className="mono">database</span></div>
+        <div className="mini">Saved to <span className="mono">database</span>. Strategy floors and exchange-enforced minimums are shown separately.</div>
       </div>
 
       {sections.length > 0 && (
