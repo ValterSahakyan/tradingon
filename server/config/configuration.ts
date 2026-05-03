@@ -61,6 +61,7 @@ export default () => ({
     accountAddress: readOptionalString('HYPERLIQUID_ACCOUNT_ADDRESS') ?? null,
     testnet: readOptionalBoolean('HYPERLIQUID_TESTNET'),
     marketOrderSlippage: readOptionalNumber('HYPERLIQUID_MARKET_ORDER_SLIPPAGE') ?? 0.01,
+    minOrderBufferPercent: readOptionalNumber('HYPERLIQUID_MIN_ORDER_BUFFER_PERCENT') ?? 2,
     apiUrl: readOptionalString('HYPERLIQUID_API_URL'),
     wsUrl: readOptionalString('HYPERLIQUID_WS_URL'),
   },

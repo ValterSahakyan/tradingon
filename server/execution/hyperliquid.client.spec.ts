@@ -33,6 +33,7 @@ describe('HyperliquidClient placeMarketOrder', () => {
     const config = {
       get: jest.fn((key: string) => {
         if (key === 'hyperliquid.marketOrderSlippage') return 0.01;
+        if (key === 'hyperliquid.minOrderBufferPercent') return 0;
         return undefined;
       }),
     };
@@ -53,6 +54,35 @@ describe('HyperliquidClient placeMarketOrder', () => {
         b: true,
         p: '101.0001',
         s: '1.00',
+      }),
+    ]);
+  });
+
+  it('bumps short IOC size so the final wire order stays above the minimum', async () => {
+    const config = {
+      get: jest.fn((key: string) => {
+        if (key === 'hyperliquid.marketOrderSlippage') return 0.01;
+        if (key === 'hyperliquid.minOrderBufferPercent') return 0;
+        return undefined;
+      }),
+    };
+    const client = new HyperliquidClient(config as any) as any;
+
+    client.assets = new Map([
+      ['LTC', { index: 10, szDecimals: 2 }],
+    ]);
+    client.ensureReady = jest.fn(async () => true);
+    client.getMidPrice = jest.fn(async () => 100);
+    client.sendOrder = jest.fn(async () => ({ status: 'filled', oid: 1, avgPx: 99, totalSz: 0.11 }));
+
+    await client.placeMarketOrder('LTC', false, 0.1);
+
+    expect(client.sendOrder).toHaveBeenCalledWith([
+      expect.objectContaining({
+        a: 10,
+        b: false,
+        p: '99',
+        s: '0.11',
       }),
     ]);
   });

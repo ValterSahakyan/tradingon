@@ -251,6 +251,14 @@ export class AppConfigService implements OnModuleInit {
       return;
     }
 
+    if (key === 'hyperliquidMinOrderBufferPercent') {
+      const numeric = Number(value);
+      if (!Number.isFinite(numeric) || numeric < 0 || numeric > 20) {
+        throw new BadRequestException('Min Order Buffer % must be between 0 and 20');
+      }
+      return;
+    }
+
     if (key === 'leverage') {
       const numeric = Number(value);
       if (!Number.isFinite(numeric) || numeric < 1) {

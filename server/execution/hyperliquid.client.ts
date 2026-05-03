@@ -33,6 +33,7 @@ interface PortfolioWindow {
 }
 
 type PriceRoundingMode = 'nearest' | 'up' | 'down';
+type SizeRoundingMode = 'nearest' | 'up' | 'down';
 
 @Injectable()
 export class HyperliquidClient implements OnModuleInit {
@@ -85,15 +86,29 @@ export class HyperliquidClient implements OnModuleInit {
 
     const slippage = this.config.get<number>('hyperliquid.marketOrderSlippage');
     const limitPx = isBuy ? midPrice * (1 + slippage) : midPrice * (1 - slippage);
+    const priceMode: PriceRoundingMode = isBuy ? 'up' : 'down';
+    const wirePrice = this.fmtPrice(limitPx, asset.szDecimals, priceMode);
+    const minOrderValue = reduceOnly ? 0 : this.getMinOrderValueThreshold();
+    const adjustedSz = reduceOnly
+      ? this.quantizeSize(sz, asset.szDecimals, 'nearest')
+      : this.ensureMinOrderSize(sz, Number(wirePrice), asset.szDecimals, minOrderValue);
+    const wireSize = this.fmtSize(adjustedSz, asset.szDecimals);
 
     const wire: OrderWire = {
       a: asset.index,
       b: isBuy,
-      p: this.fmtPrice(limitPx, asset.szDecimals, isBuy ? 'up' : 'down'),
-      s: this.fmtSize(sz, asset.szDecimals),
+      p: wirePrice,
+      s: wireSize,
       r: reduceOnly,
       t: { limit: { tif: 'Ioc' } },
     };
+
+    if (!reduceOnly && adjustedSz > sz) {
+      this.logger.log(
+        `Bumping ${coin} wire size from ${this.fmtSize(sz, asset.szDecimals)} to ${wireSize} ` +
+        `to keep final order value above $${minOrderValue.toFixed(2)} at price ${wirePrice}`,
+      );
+    }
 
     return this.sendOrder([wire]);
   }
@@ -787,5 +802,39 @@ export class HyperliquidClient implements OnModuleInit {
 
   fmtSize(sz: number, szDecimals: number): string {
     return sz.toFixed(szDecimals);
+  }
+
+  private quantizeSize(sz: number, szDecimals: number, mode: SizeRoundingMode): number {
+    const scale = 10 ** szDecimals;
+    const scaled = sz * scale;
+    const units =
+      mode === 'up'
+        ? Math.ceil(scaled - 1e-9)
+        : mode === 'down'
+          ? Math.floor(scaled + 1e-9)
+          : Math.round(scaled);
+    return Math.max(0, units) / scale;
+  }
+
+  private ensureMinOrderSize(
+    requestedSz: number,
+    executablePrice: number,
+    szDecimals: number,
+    minOrderValue: number,
+  ): number {
+    const roundedRequested = this.quantizeSize(requestedSz, szDecimals, 'up');
+    if (executablePrice <= 0 || minOrderValue <= 0) {
+      return roundedRequested;
+    }
+
+    const requiredSz = minOrderValue / executablePrice;
+    const roundedRequired = this.quantizeSize(requiredSz, szDecimals, 'up');
+    return Math.max(roundedRequested, roundedRequired);
+  }
+
+  private getMinOrderValueThreshold(): number {
+    const exchangeMinimum = 10;
+    const bufferPercent = this.config.get<number>('hyperliquid.minOrderBufferPercent');
+    return exchangeMinimum * (1 + bufferPercent / 100);
   }
 }

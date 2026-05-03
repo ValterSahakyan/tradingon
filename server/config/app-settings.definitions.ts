@@ -145,6 +145,16 @@ export const APP_SETTING_FIELDS: SettingField[] = [
     help: 'IOC market-order slippage as a decimal fraction. Example: 0.005 = 0.5%, 0.01 = 1%.',
   }),
   field({
+    key: 'hyperliquidMinOrderBufferPercent',
+    env: null,
+    path: 'hyperliquid.minOrderBufferPercent',
+    type: 'number',
+    label: 'Min Order Buffer %',
+    section: 'Exchange',
+    editable: true,
+    help: 'Extra percentage buffer above Hyperliquid\'s $10 minimum to survive slippage and size rounding. Example: 2 = target at least $10.20 on the final wire order.',
+  }),
+  field({
     key: 'hyperliquidApiUrl',
     env: 'HYPERLIQUID_API_URL',
     path: 'hyperliquid.apiUrl',
