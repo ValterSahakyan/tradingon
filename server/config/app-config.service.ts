@@ -259,6 +259,14 @@ export class AppConfigService implements OnModuleInit {
       return;
     }
 
+    if (key === 'hyperliquidExchangeMinOrderNotional') {
+      const numeric = Number(value);
+      if (!Number.isFinite(numeric) || numeric <= 0 || numeric > 1000) {
+        throw new BadRequestException('Exchange Min Order Notional must be greater than 0 and less than or equal to 1000');
+      }
+      return;
+    }
+
     if (key === 'leverage') {
       const numeric = Number(value);
       if (!Number.isFinite(numeric) || numeric < 1) {
@@ -267,10 +275,33 @@ export class AppConfigService implements OnModuleInit {
       return;
     }
 
+    if (key === 'leverageScore2' || key === 'leverageScore3' || key === 'leverageScore4') {
+      const numeric = Number(value);
+      if (!Number.isFinite(numeric) || numeric < 1) {
+        throw new BadRequestException('Score leverage must be greater than or equal to 1');
+      }
+      return;
+    }
+
     if (key === 'freeCollateralBufferUsd') {
       const numeric = Number(value);
       if (!Number.isFinite(numeric) || numeric < 0 || numeric > 1000) {
         throw new BadRequestException('Free Collateral Buffer USD must be between 0 and 1000');
+      }
+      return;
+    }
+
+    if (key === 'tp1ClosePercent' || key === 'tp2ClosePercent' || key === 'tp3ClosePercent') {
+      const numeric = Number(value);
+      if (!Number.isFinite(numeric) || numeric < 0 || numeric > 100) {
+        throw new BadRequestException('TP close percentages must be between 0 and 100');
+      }
+      const tp1 = key === 'tp1ClosePercent' ? numeric : Number(this.values.get('tp1ClosePercent') ?? this.config.get<number>('exits.tp1ClosePercent') ?? 0);
+      const tp2 = key === 'tp2ClosePercent' ? numeric : Number(this.values.get('tp2ClosePercent') ?? this.config.get<number>('exits.tp2ClosePercent') ?? 0);
+      const tp3 = key === 'tp3ClosePercent' ? numeric : Number(this.values.get('tp3ClosePercent') ?? this.config.get<number>('exits.tp3ClosePercent') ?? 0);
+      const total = tp1 + tp2 + tp3;
+      if (Math.abs(total - 100) > 0.0001) {
+        throw new BadRequestException('TP1 Close %, TP2 Close %, and TP3 Close % must add up to 100');
       }
     }
   }

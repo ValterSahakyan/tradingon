@@ -34,6 +34,7 @@ describe('HyperliquidClient placeMarketOrder', () => {
       get: jest.fn((key: string) => {
         if (key === 'hyperliquid.marketOrderSlippage') return 0.01;
         if (key === 'hyperliquid.minOrderBufferPercent') return 0;
+        if (key === 'hyperliquid.exchangeMinOrderNotional') return 10;
         return undefined;
       }),
     };
@@ -63,6 +64,7 @@ describe('HyperliquidClient placeMarketOrder', () => {
       get: jest.fn((key: string) => {
         if (key === 'hyperliquid.marketOrderSlippage') return 0.01;
         if (key === 'hyperliquid.minOrderBufferPercent') return 0;
+        if (key === 'hyperliquid.exchangeMinOrderNotional') return 10;
         return undefined;
       }),
     };

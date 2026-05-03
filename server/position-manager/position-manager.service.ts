@@ -292,6 +292,8 @@ export class PositionManagerService implements OnModuleInit {
 
       this.logger.log(`Resyncing ${hlPositions.length} position(s) from exchange`);
       const stopPct = this.config.get<number>('exits.stopLossPercent') / 100;
+      const tp1Ratio = this.config.get<number>('exits.tp1ClosePercent') / 100;
+      const tp2Ratio = this.config.get<number>('exits.tp2ClosePercent') / 100;
 
       for (const p of hlPositions) {
         const sz = parseFloat(p.szi);
@@ -300,6 +302,9 @@ export class PositionManagerService implements OnModuleInit {
         const direction = sz > 0 ? 'long' : 'short';
         const absSz = Math.abs(sz);
         const notional = Math.abs(parseFloat(p.positionValue ?? '0'));
+        const tp1Size = absSz * tp1Ratio;
+        const tp2Size = absSz * tp2Ratio;
+        const tp3Size = Math.max(0, absSz - tp1Size - tp2Size);
 
         this.positions.set(p.coin, {
           id: `${p.coin}-restored-${Date.now()}`,
@@ -329,9 +334,9 @@ export class PositionManagerService implements OnModuleInit {
           patternsFired: [],
           score: 0,
           marketCondition: 'sideways',
-          tp1Size: absSz * 0.5,
-          tp2Size: absSz * 0.35,
-          tp3Size: absSz * 0.15,
+          tp1Size,
+          tp2Size,
+          tp3Size,
         });
       }
     } catch (err) {

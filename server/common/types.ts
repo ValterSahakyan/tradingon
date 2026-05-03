@@ -51,6 +51,7 @@ export interface TradeSignal {
   currentPrice: number;
   suggestedMargin: number;
   notional: number;
+  leverage: number;
   stopPrice: number;
   tp1Price: number;
   tp2Price: number;

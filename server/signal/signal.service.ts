@@ -284,7 +284,7 @@ export class SignalService {
     }
 
     const margin = this.marginForScore(patternsFired.length, marketCondition);
-    const leverage = this.config.get<number>('capital.leverage');
+    const leverage = this.leverageForScore(patternsFired.length);
     const notional = margin * leverage;
 
     return {
@@ -296,6 +296,7 @@ export class SignalService {
         currentPrice,
         suggestedMargin: margin,
         notional,
+        leverage,
         stopPrice: levels.stopPrice,
         tp1Price: levels.tp1Price,
         tp2Price: levels.tp2Price,
@@ -404,6 +405,19 @@ export class SignalService {
       return base * 0.5;
     }
     return base;
+  }
+
+  private leverageForScore(score: number): number {
+    const fallback = this.config.get<number>('capital.leverage');
+    const scorePath =
+      score <= 2
+        ? 'capital.leverageScore2'
+        : score === 3
+          ? 'capital.leverageScore3'
+          : 'capital.leverageScore4';
+
+    const configured = this.config.get<number>(scorePath);
+    return Number.isFinite(configured) && configured >= 1 ? configured : fallback;
   }
 
   private createDiagnostics(): ScanDiagnostics {

@@ -6,7 +6,6 @@ import { OpenPosition, TradeSignal } from '../common/types';
 @Injectable()
 export class ExecutionService {
   private readonly logger = new Logger(ExecutionService.name);
-  private static readonly HYPERLIQUID_MIN_ORDER_NOTIONAL = 10;
 
   constructor(
     private readonly config: AppConfigService,
@@ -19,10 +18,10 @@ export class ExecutionService {
     }
 
     const { token, direction, currentPrice, notional } = signal;
-    const leverage = this.config.get<number>('capital.leverage');
+    const leverage = signal.leverage ?? this.config.get<number>('capital.leverage');
     const minOrderNotional = this.config.get<number>('capital.minOrderNotional');
     const freeCollateralBufferUsd = this.config.get<number>('capital.freeCollateralBufferUsd');
-    const exchangeMinOrderNotional = ExecutionService.HYPERLIQUID_MIN_ORDER_NOTIONAL;
+    const exchangeMinOrderNotional = this.config.get<number>('hyperliquid.exchangeMinOrderNotional');
     const effectiveNotional = Math.max(notional, minOrderNotional, exchangeMinOrderNotional);
     const effectiveMargin = effectiveNotional / leverage;
 
@@ -92,6 +91,7 @@ export class ExecutionService {
 
     // Use actual filled size if available (partial fills on IOC)
     const filledSz = result.totalSz && result.totalSz > 0 ? result.totalSz : sz;
+    const { tp1Size, tp2Size, tp3Size } = this.buildTakeProfitSizes(filledSz);
 
     const position: OpenPosition = {
       id: `${token}-${Date.now()}`,
@@ -115,9 +115,9 @@ export class ExecutionService {
       patternsFired: signal.patternsFired,
       score: signal.score,
       marketCondition: signal.marketCondition,
-      tp1Size: filledSz * 0.5,
-      tp2Size: filledSz * 0.35,
-      tp3Size: filledSz * 0.15,
+      tp1Size,
+      tp2Size,
+      tp3Size,
     };
 
     this.logger.log(
@@ -200,5 +200,15 @@ export class ExecutionService {
     }
 
     return true;
+  }
+
+  private buildTakeProfitSizes(totalSize: number): { tp1Size: number; tp2Size: number; tp3Size: number } {
+    const tp1Ratio = this.config.get<number>('exits.tp1ClosePercent') / 100;
+    const tp2Ratio = this.config.get<number>('exits.tp2ClosePercent') / 100;
+    const tp1Size = totalSize * tp1Ratio;
+    const tp2Size = totalSize * tp2Ratio;
+    const tp3Size = Math.max(0, totalSize - tp1Size - tp2Size);
+
+    return { tp1Size, tp2Size, tp3Size };
   }
 }

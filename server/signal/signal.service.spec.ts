@@ -44,4 +44,32 @@ describe('SignalService', () => {
     expect(service.getLastCandidates()).toHaveLength(2);
     expect(service.getLastCandidates().map((candidate: { token: string }) => candidate.token)).toEqual(['TAO', 'CHILLGUY']);
   });
+
+  it('uses score-based leverage with fallback to the default leverage', async () => {
+    const config = {
+      get: jest.fn((key: string) => {
+        const values: Record<string, unknown> = {
+          'capital.leverage': 3,
+          'capital.leverageScore2': 1,
+          'capital.leverageScore3': 2,
+          'capital.leverageScore4': undefined,
+        };
+        return values[key];
+      }),
+    } as unknown as AppConfigService;
+
+    const service = new SignalService(
+      config,
+      {} as any,
+      { emit: jest.fn() } as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+    );
+
+    expect((service as any).leverageForScore(2)).toBe(1);
+    expect((service as any).leverageForScore(3)).toBe(2);
+    expect((service as any).leverageForScore(4)).toBe(3);
+  });
 });

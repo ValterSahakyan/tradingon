@@ -149,6 +149,7 @@ export class DashboardService {
         currentPrice: candidate.currentPrice,
         suggestedMargin: 0,
         notional: 0,
+        leverage: this.config.get<number>('capital.leverage'),
         stopPrice: 0,
         tp1Price: 0,
         tp2Price: 0,

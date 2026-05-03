@@ -866,7 +866,7 @@ export class HyperliquidClient implements OnModuleInit {
   }
 
   private getMinOrderValueThreshold(): number {
-    const exchangeMinimum = 10;
+    const exchangeMinimum = this.config.get<number>('hyperliquid.exchangeMinOrderNotional');
     const bufferPercent = this.config.get<number>('hyperliquid.minOrderBufferPercent');
     return exchangeMinimum * (1 + bufferPercent / 100);
   }
