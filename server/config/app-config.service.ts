@@ -42,6 +42,11 @@ export class AppConfigService implements OnModuleInit {
         return this.parseValue(field.type, raw) as T;
       }
 
+      const fallbackValue = this.getRuntimeFallbackValue(field);
+      if (fallbackValue !== undefined) {
+        return fallbackValue as T;
+      }
+
       if (field.editable) {
         if (this.ready) {
           throw new Error(`Missing DB-backed setting value for ${field.key} (${field.path})`);
@@ -135,7 +140,7 @@ export class AppConfigService implements OnModuleInit {
         continue;
       }
 
-      const baseValue = this.config.get(field.path);
+      const baseValue = this.getSeedValue(field);
       if (baseValue === undefined || baseValue === null) {
         continue;
       }
@@ -304,5 +309,30 @@ export class AppConfigService implements OnModuleInit {
         throw new BadRequestException('TP1 Close %, TP2 Close %, and TP3 Close % must add up to 100');
       }
     }
+  }
+
+  private getSeedValue(field: SettingField): unknown {
+    const runtimeFallback = this.getRuntimeFallbackValue(field);
+    if (runtimeFallback !== undefined) {
+      return runtimeFallback;
+    }
+
+    return this.config.get(field.path);
+  }
+
+  private getRuntimeFallbackValue(field: SettingField): unknown {
+    if (field.key === 'leverageScore2' || field.key === 'leverageScore3' || field.key === 'leverageScore4') {
+      const leverageFromDb = this.values.get('leverage');
+      if (leverageFromDb != null) {
+        return this.parseValue('number', leverageFromDb);
+      }
+
+      const leverageFromConfig = this.config.get<number>('capital.leverage');
+      if (Number.isFinite(leverageFromConfig) && leverageFromConfig >= 1) {
+        return leverageFromConfig;
+      }
+    }
+
+    return undefined;
   }
 }
