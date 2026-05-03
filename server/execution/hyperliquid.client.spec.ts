@@ -113,4 +113,57 @@ describe('HyperliquidClient setLeverage', () => {
     expect(result).toBe(true);
     expect(client.http.post).not.toHaveBeenCalled();
   });
+
+  it('accepts a successful leverage update when verification endpoints return no leverage data', async () => {
+    const client = new HyperliquidClient({} as any) as any;
+
+    client.http = {
+      post: jest.fn(async () => ({ data: { status: 'ok' } })),
+    };
+    client.assets = new Map([
+      ['AVAX', { index: 12, szDecimals: 2 }],
+    ]);
+    client.ensureReady = jest.fn(async () => true);
+    client.ensureAccountAbstraction = jest.fn(async () => {
+      client.accountAbstraction = null;
+    });
+    client.getLeverageState = jest.fn(async () => null);
+    client.signL1Action = jest.fn(async () => ({
+      sig: { r: '0x1', s: '0x2', v: 27 },
+      nonce: 1,
+    }));
+
+    const result = await client.setLeverage('AVAX', 3);
+
+    expect(result).toBe(true);
+    expect(client.http.post).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a leverage update when the exchange reports a different mode after the update', async () => {
+    const client = new HyperliquidClient({} as any) as any;
+
+    client.http = {
+      post: jest.fn(async () => ({ data: { status: 'ok' } })),
+    };
+    client.assets = new Map([
+      ['HYPE', { index: 19, szDecimals: 2 }],
+    ]);
+    client.ensureReady = jest.fn(async () => true);
+    client.ensureAccountAbstraction = jest.fn(async () => {
+      client.accountAbstraction = null;
+    });
+    client.getLeverageState = jest
+      .fn()
+      .mockImplementationOnce(async () => ({ leverage: { type: 'cross', value: 2 }, source: 'activeAssetData' }))
+      .mockImplementationOnce(async () => ({ leverage: { type: 'cross', value: 2 }, source: 'activeAssetData' }));
+    client.signL1Action = jest.fn(async () => ({
+      sig: { r: '0x1', s: '0x2', v: 27 },
+      nonce: 1,
+    }));
+
+    const result = await client.setLeverage('HYPE', 3);
+
+    expect(result).toBe(false);
+    expect(client.http.post).toHaveBeenCalledTimes(1);
+  });
 });

@@ -26,6 +26,12 @@ interface FillResult {
   totalSz?: number;
 }
 
+interface LeverageState {
+  type?: string;
+  value?: number;
+  source: 'activeAssetData' | 'clearinghouseState';
+}
+
 interface PortfolioWindow {
   accountValueHistory: Array<[number, string]>;
   pnlHistory: Array<[number, string]>;
@@ -167,7 +173,7 @@ export class HyperliquidClient implements OnModuleInit {
     }
 
     await this.ensureAccountAbstraction();
-    const current = await this.getActiveAssetData(coin);
+    const current = await this.getLeverageState(coin);
     const unifiedAccount = this.usesUnifiedCollateral();
     const isCross = unifiedAccount;
     const targetMode = unifiedAccount ? 'cross' : 'isolated';
@@ -181,15 +187,23 @@ export class HyperliquidClient implements OnModuleInit {
     try {
       const { sig, nonce } = await this.signL1Action(action, vaultAddress);
       await http.post('/exchange', { action, nonce, signature: sig, vaultAddress });
-      const updated = await this.getActiveAssetData(coin);
+      const updated = await this.getLeverageState(coin);
       if (updated?.leverage?.value === leverage && updated.leverage.type === targetMode) {
-        this.logger.log(`setLeverage applied for ${coin}: ${targetMode} ${leverage}x`);
+        this.logger.log(`setLeverage applied for ${coin}: ${targetMode} ${leverage}x (${updated.source})`);
+        return true;
+      }
+
+      if (!updated?.leverage) {
+        this.logger.warn(
+          `setLeverage for ${coin} was accepted but could not be verified via info endpoints; ` +
+          `proceeding with ${targetMode} ${leverage}x`,
+        );
         return true;
       }
 
       this.logger.warn(
-        `setLeverage could not confirm isolated mode for ${coin}: expected ${targetMode} ${leverage}x, ` +
-        `got ${updated?.leverage?.type ?? 'unknown'} ${updated?.leverage?.value ?? 'unknown'}x`,
+        `setLeverage could not confirm requested mode for ${coin}: expected ${targetMode} ${leverage}x, ` +
+        `got ${updated.leverage.type ?? 'unknown'} ${updated.leverage.value ?? 'unknown'}x (${updated.source})`,
       );
       return false;
     } catch (err) {
@@ -587,6 +601,29 @@ export class HyperliquidClient implements OnModuleInit {
       this.logger.warn(`activeAssetData lookup failed for ${coin}: ${this.formatAxiosError(err)}`);
       return null;
     }
+  }
+
+  private async getLeverageState(
+    coin: string,
+  ): Promise<{ leverage?: { type?: string; value?: number }; source?: LeverageState['source'] } | null> {
+    const activeAsset = await this.getActiveAssetData(coin);
+    if (activeAsset?.leverage?.type && typeof activeAsset.leverage.value === 'number') {
+      return {
+        leverage: activeAsset.leverage,
+        source: 'activeAssetData',
+      };
+    }
+
+    const positions = await this.getOpenPositions();
+    const matchingPosition = positions.find((position) => position.coin === coin);
+    if (matchingPosition?.leverage?.type && typeof matchingPosition.leverage.value === 'number') {
+      return {
+        leverage: matchingPosition.leverage,
+        source: 'clearinghouseState',
+      };
+    }
+
+    return null;
   }
 
   private formatAxiosError(err: any): string {

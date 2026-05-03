@@ -25,11 +25,11 @@ export class ExecutionService {
     const effectiveNotional = Math.max(notional, minOrderNotional, exchangeMinOrderNotional);
     const effectiveMargin = effectiveNotional / leverage;
 
-    // The bot now trades isolated only.
-    // If the exchange account cannot confirm isolated mode, refuse to place the order.
-    const isolatedReady = await this.hl.setLeverage(token, leverage);
-    if (!isolatedReady) {
-      this.logger.error(`Refusing to open ${direction} ${token}: isolated leverage setup failed`);
+    // Standard accounts should trade isolated. Unified/portfolio accounts can only
+    // use exchange-managed cross collateral, so the client normalizes that internally.
+    const leverageReady = await this.hl.setLeverage(token, leverage);
+    if (!leverageReady) {
+      this.logger.error(`Refusing to open ${direction} ${token}: leverage setup failed`);
       return null;
     }
 
