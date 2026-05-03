@@ -114,6 +114,30 @@ describe('HyperliquidClient setLeverage', () => {
     expect(client.http.post).not.toHaveBeenCalled();
   });
 
+  it('accepts unified accounts when current cross leverage is higher than requested', async () => {
+    const client = new HyperliquidClient({} as any) as any;
+
+    client.http = {
+      post: jest.fn(),
+    };
+    client.assets = new Map([
+      ['kFLOKI', { index: 119, szDecimals: 0 }],
+    ]);
+    client.ensureReady = jest.fn(async () => true);
+    client.ensureAccountAbstraction = jest.fn(async () => {
+      client.accountAbstraction = 'unifiedAccount';
+    });
+    client.getLeverageState = jest.fn(async () => ({
+      leverage: { type: 'cross', value: 5 },
+      source: 'activeAssetData',
+    }));
+
+    const result = await client.setLeverage('kFLOKI', 2);
+
+    expect(result).toBe(true);
+    expect(client.http.post).not.toHaveBeenCalled();
+  });
+
   it('accepts a successful leverage update when verification endpoints return no leverage data', async () => {
     const client = new HyperliquidClient({} as any) as any;
 

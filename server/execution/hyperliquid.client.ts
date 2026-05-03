@@ -177,6 +177,12 @@ export class HyperliquidClient implements OnModuleInit {
     const unifiedAccount = this.usesUnifiedCollateral();
     const isCross = unifiedAccount;
     const targetMode = unifiedAccount ? 'cross' : 'isolated';
+    if (unifiedAccount && this.isUnifiedCrossLeverageSufficient(current, leverage)) {
+      this.logger.log(
+        `setLeverage skipped for ${coin}: unified cross ${current!.leverage!.value}x already covers requested ${leverage}x`,
+      );
+      return true;
+    }
     if (current?.leverage?.value === leverage && current.leverage.type === targetMode) {
       this.logger.log(`setLeverage skipped for ${coin}: already ${current.leverage.type} ${leverage}x`);
       return true;
@@ -188,6 +194,12 @@ export class HyperliquidClient implements OnModuleInit {
       const { sig, nonce } = await this.signL1Action(action, vaultAddress);
       await http.post('/exchange', { action, nonce, signature: sig, vaultAddress });
       const updated = await this.getLeverageState(coin);
+      if (unifiedAccount && this.isUnifiedCrossLeverageSufficient(updated, leverage)) {
+        this.logger.log(
+          `setLeverage accepted for ${coin}: unified cross ${updated!.leverage!.value}x covers requested ${leverage}x (${updated!.source})`,
+        );
+        return true;
+      }
       if (updated?.leverage?.value === leverage && updated.leverage.type === targetMode) {
         this.logger.log(`setLeverage applied for ${coin}: ${targetMode} ${leverage}x (${updated.source})`);
         return true;
@@ -624,6 +636,15 @@ export class HyperliquidClient implements OnModuleInit {
     }
 
     return null;
+  }
+
+  private isUnifiedCrossLeverageSufficient(
+    state: { leverage?: { type?: string; value?: number } } | null,
+    requestedLeverage: number,
+  ): boolean {
+    return state?.leverage?.type === 'cross'
+      && typeof state.leverage.value === 'number'
+      && state.leverage.value >= requestedLeverage;
   }
 
   private formatAxiosError(err: any): string {
