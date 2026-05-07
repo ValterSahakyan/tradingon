@@ -56,6 +56,7 @@ export class HyperliquidClient implements OnModuleInit {
   private assets = new Map<string, AssetMeta>();
   private assetsLoading: Promise<void> | null = null;
   private closingInFlight = new Set<string>();
+  private actionRateLimitedUntil = 0;
   private cachedAccountValue: number | null = null;
   private cachedAccountValueAt = 0;
   private cachedSpotUsdc: number | null = null;
@@ -151,6 +152,9 @@ export class HyperliquidClient implements OnModuleInit {
     if (!http || !asset) {
       return false;
     }
+    if (!this.canSendAction(`cancel ${coin}#${oid}`)) {
+      return false;
+    }
 
     const vaultAddress = this.getVaultAddress();
     const action = { type: 'cancel', cancels: [{ a: asset.index, o: oid }] };
@@ -159,6 +163,7 @@ export class HyperliquidClient implements OnModuleInit {
       const res = await http.post('/exchange', { action, nonce, signature: sig, vaultAddress });
       return res.data?.status === 'ok';
     } catch (err) {
+      this.captureActionRateLimit(err);
       this.logger.error(`Cancel failed: ${err.message}`);
       return false;
     }
@@ -190,6 +195,9 @@ export class HyperliquidClient implements OnModuleInit {
 
     const vaultAddress = this.getVaultAddress();
     const action = { type: 'updateLeverage', asset: asset.index, isCross, leverage };
+    if (!this.canSendAction(`set leverage for ${coin}`)) {
+      return false;
+    }
     try {
       const { sig, nonce } = await this.signL1Action(action, vaultAddress);
       await http.post('/exchange', { action, nonce, signature: sig, vaultAddress });
@@ -219,6 +227,7 @@ export class HyperliquidClient implements OnModuleInit {
       );
       return false;
     } catch (err) {
+      this.captureActionRateLimit(err);
       this.logger.warn(
         `setLeverage failed for ${coin}: ${this.formatAxiosError(err)} | action=${JSON.stringify(action)}`,
       );
@@ -555,6 +564,9 @@ export class HyperliquidClient implements OnModuleInit {
     if (!http) {
       return null;
     }
+    if (!this.canSendAction(`submit ${orders.length} order(s)`)) {
+      return null;
+    }
 
     const vaultAddress = this.getVaultAddress();
     const action = { type: 'order', orders, grouping: 'na' };
@@ -585,6 +597,7 @@ export class HyperliquidClient implements OnModuleInit {
       }
 
       if (first?.error) {
+        this.captureActionRateLimit(first.error);
         this.logger.error(`Order error: ${first.error}`);
         return null;
       }
@@ -592,6 +605,7 @@ export class HyperliquidClient implements OnModuleInit {
       this.logger.warn(`Unexpected order response: ${JSON.stringify(res.data)}`);
       return null;
     } catch (err) {
+      this.captureActionRateLimit(err);
       this.logger.error(`sendOrder failed: ${this.formatAxiosError(err)} | action=${JSON.stringify(action)}`);
       return null;
     }
@@ -654,6 +668,60 @@ export class HyperliquidClient implements OnModuleInit {
       return `status=${status} body=${JSON.stringify(data ?? {})}`;
     }
     return err?.message ?? String(err);
+  }
+
+  private canSendAction(label: string): boolean {
+    const remainingMs = this.actionRateLimitedUntil - Date.now();
+    if (remainingMs <= 0) {
+      return true;
+    }
+
+    this.logger.warn(
+      `Skipping ${label}: Hyperliquid address action rate limit active for ${Math.ceil(remainingMs / 1000)}s`,
+    );
+    return false;
+  }
+
+  private captureActionRateLimit(err: unknown): void {
+    const message = this.extractRateLimitMessage(err);
+    if (!message) {
+      return;
+    }
+
+    const nextWindow = Date.now() + 10_000;
+    if (nextWindow > this.actionRateLimitedUntil) {
+      this.actionRateLimitedUntil = nextWindow;
+    }
+    this.logger.warn(`${message} Backing off exchange actions for 10 seconds.`);
+  }
+
+  private extractRateLimitMessage(err: unknown): string | null {
+    if (typeof err === 'string') {
+      return this.isAddressActionRateLimitMessage(err) ? err : null;
+    }
+
+    if (err && typeof err === 'object') {
+      const directMessage = (err as any).message;
+      if (typeof directMessage === 'string' && this.isAddressActionRateLimitMessage(directMessage)) {
+        return directMessage;
+      }
+
+      const responseData = (err as any).response?.data;
+      if (typeof responseData === 'string' && this.isAddressActionRateLimitMessage(responseData)) {
+        return responseData;
+      }
+
+      const nestedMessage = responseData?.message;
+      if (typeof nestedMessage === 'string' && this.isAddressActionRateLimitMessage(nestedMessage)) {
+        return nestedMessage;
+      }
+    }
+
+    return null;
+  }
+
+  private isAddressActionRateLimitMessage(message: string): boolean {
+    return /Too many cumulative requests sent|free up 1 request per USDC traded/i.test(message);
   }
 
   private async loadAssetMeta(attempt = 1): Promise<void> {
@@ -776,6 +844,7 @@ export class HyperliquidClient implements OnModuleInit {
     this.accountAbstractionChecked = false;
     this.assets.clear();
     this.assetsLoading = null;
+    this.actionRateLimitedUntil = 0;
     this.cachedAccountValue = null;
     this.cachedAccountValueAt = 0;
     this.cachedSpotUsdc = null;

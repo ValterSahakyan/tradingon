@@ -88,6 +88,50 @@ describe('HyperliquidClient placeMarketOrder', () => {
       }),
     ]);
   });
+
+  it('backs off for 10 seconds after Hyperliquid cumulative action rate-limit errors', async () => {
+    const config = {
+      get: jest.fn((key: string) => {
+        if (key === 'hyperliquid.marketOrderSlippage') return 0.01;
+        if (key === 'hyperliquid.minOrderBufferPercent') return 0;
+        if (key === 'hyperliquid.exchangeMinOrderNotional') return 10;
+        return undefined;
+      }),
+    };
+    const client = new HyperliquidClient(config as any) as any;
+
+    client.assets = new Map([
+      ['MAVIA', { index: 110, szDecimals: 2 }],
+    ]);
+    client.ensureReady = jest.fn(async () => true);
+    client.getMidPrice = jest.fn(async () => 100);
+    client.getHttp = jest.fn(async () => ({
+      post: jest.fn(async () => ({
+        data: {
+          response: {
+            data: {
+              statuses: [
+                {
+                  error: 'Too many cumulative requests sent (18488 > 13327) for cumulative volume traded $3328.05. Place taker orders to free up 1 request per USDC traded.',
+                },
+              ],
+            },
+          },
+        },
+      })),
+    }));
+    client.signL1Action = jest.fn(async () => ({
+      sig: { r: '0x1', s: '0x2', v: 27 },
+      nonce: 1,
+    }));
+
+    const first = await client.placeMarketOrder('MAVIA', true, 1, true);
+    const second = await client.placeMarketOrder('MAVIA', true, 1, true);
+
+    expect(first).toBeNull();
+    expect(second).toBeNull();
+    expect(client.signL1Action).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('HyperliquidClient setLeverage', () => {
