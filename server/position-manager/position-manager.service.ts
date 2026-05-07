@@ -48,11 +48,9 @@ export class PositionManagerService implements OnModuleInit {
     await this.syncPositionsFromExchange();
   }
 
-  // ─── Trade open ────────────────────────────────────────────────
-
   async openTrade(signal: TradeSignal): Promise<boolean> {
     if (this.positions.size >= this.config.get<number>('capital.maxConcurrentPositions')) {
-      this.logger.warn('Max concurrent positions reached — skipping');
+      this.logger.warn('Max concurrent positions reached - skipping');
       return false;
     }
     if (this.positions.has(signal.token)) {
@@ -82,16 +80,12 @@ export class PositionManagerService implements OnModuleInit {
   getOpenTokens(): Set<string> { return new Set(this.positions.keys()); }
   getPositionCount(): number { return this.positions.size; }
 
-  // ─── Price updates (WebSocket allMids) ────────────────────────
-
   @OnEvent('ws.mids')
   async handlePriceUpdate(mids: Record<string, string>): Promise<void> {
-    // Snapshot keys so we don't iterate a mutating map
     const tokens = [...this.positions.keys()];
     for (const token of tokens) {
       const position = this.positions.get(token);
       if (!position) continue;
-      // Skip if a close order is already in-flight for this coin
       if (this.hlClient.isClosing(token)) continue;
 
       const priceStr = mids[token];
@@ -101,25 +95,20 @@ export class PositionManagerService implements OnModuleInit {
     }
   }
 
-  // ─── Position update + exit logic ─────────────────────────────
-
   private async updatePosition(position: OpenPosition, currentPrice: number): Promise<void> {
     position.currentPrice = currentPrice;
 
-    // Track trailing extreme for vol stop and TP3 trailing stop
     if (position.direction === 'long') {
       if (currentPrice > position.trailingHighest) position.trailingHighest = currentPrice;
     } else {
       if (currentPrice < position.trailingHighest) position.trailingHighest = currentPrice;
     }
 
-    // Unrealized PnL
     const priceDiff = position.direction === 'long'
       ? currentPrice - position.entryPrice
       : position.entryPrice - currentPrice;
     position.unrealizedPnl = (priceDiff / position.entryPrice) * position.notional;
 
-    // ── 1. Volatility stop — rug pull protection ─────────────────
     const volPct = this.config.get<number>('exits.volatilityStopPercent') / 100;
     const dropFromExtreme = position.direction === 'long'
       ? (position.trailingHighest - currentPrice) / position.trailingHighest
@@ -130,7 +119,6 @@ export class PositionManagerService implements OnModuleInit {
       return;
     }
 
-    // ── 2. Primary stop loss ─────────────────────────────────────
     const hitStop = position.direction === 'long'
       ? currentPrice <= position.stopPrice
       : currentPrice >= position.stopPrice;
@@ -140,14 +128,12 @@ export class PositionManagerService implements OnModuleInit {
       return;
     }
 
-    // ── 3. Time stop ─────────────────────────────────────────────
     const maxHoldMs = this.config.get<number>('exits.maxHoldHours') * 3600_000;
     if (Date.now() - position.openTime >= maxHoldMs) {
       await this.closeAndLog(position, 'time_stop');
       return;
     }
 
-    // ── 4. TP1 — close 50% ───────────────────────────────────────
     if (!position.tp1Hit) {
       const tp1Hit = position.direction === 'long'
         ? currentPrice >= position.tp1Price
@@ -155,17 +141,19 @@ export class PositionManagerService implements OnModuleInit {
 
       if (tp1Hit) {
         const closeSize = Math.min(position.tp1Size, position.size);
-        const exitPx = await this.execution.closePosition(position, closeSize, 'TP1');
+        const exitPx = await this.runCloseAttempt(
+          position,
+          () => this.execution.closePosition(position, closeSize, 'TP1'),
+        );
         if (exitPx !== null) {
           this.applyPartialClose(position, closeSize, exitPx);
           position.tp1Hit = true;
-          position.stopPrice = position.entryPrice; // breakeven
-          this.logger.log(`TP1 hit ${position.token} — stop moved to breakeven`);
+          position.stopPrice = position.entryPrice;
+          this.logger.log(`TP1 hit ${position.token} - stop moved to breakeven`);
         }
       }
     }
 
-    // ── 5. TP2 — close 35% ───────────────────────────────────────
     if (position.tp1Hit && !position.tp2Hit) {
       const tp2Hit = position.direction === 'long'
         ? currentPrice >= position.tp2Price
@@ -173,7 +161,10 @@ export class PositionManagerService implements OnModuleInit {
 
       if (tp2Hit) {
         const closeSize = Math.min(position.tp2Size, position.size);
-        const exitPx = await this.execution.closePosition(position, closeSize, 'TP2');
+        const exitPx = await this.runCloseAttempt(
+          position,
+          () => this.execution.closePosition(position, closeSize, 'TP2'),
+        );
         if (exitPx !== null) {
           this.applyPartialClose(position, closeSize, exitPx);
           position.tp2Hit = true;
@@ -182,7 +173,6 @@ export class PositionManagerService implements OnModuleInit {
       }
     }
 
-    // ── 6. TP3 — trailing stop on remaining 15% ──────────────────
     if (position.tp1Hit && position.tp2Hit && position.size > 0) {
       const trailPct = this.config.get<number>('exits.trailingStopPercent') / 100;
       const trailStop = position.direction === 'long'
@@ -199,10 +189,8 @@ export class PositionManagerService implements OnModuleInit {
     }
   }
 
-  // ─── External / emergency close ───────────────────────────────
-
   async closeAllPositions(reason: ExitReason): Promise<void> {
-    this.logger.warn(`Closing all positions — ${reason}`);
+    this.logger.warn(`Closing all positions - ${reason}`);
     const tokens = [...this.positions.keys()];
     for (const token of tokens) {
       const pos = this.positions.get(token);
@@ -232,41 +220,47 @@ export class PositionManagerService implements OnModuleInit {
     }
   }
 
-  // ─── Close + log (with in-flight guard) ───────────────────────
-
   private async closeAndLog(position: OpenPosition, reason: ExitReason): Promise<void> {
-    // Guard: if already closing this coin, skip
-    if (this.hlClient.isClosing(position.token)) return;
+    const exitPrice = await this.runCloseAttempt(
+      position,
+      () => this.execution.closeFullPosition(position, reason),
+    );
+    if (exitPrice === null) {
+      return;
+    }
+
+    const priceDiff = position.direction === 'long'
+      ? exitPrice - position.entryPrice
+      : position.entryPrice - exitPrice;
+    const pnlUsd = position.realizedPnl + (priceDiff / position.entryPrice) * position.notional;
+
+    const tradeLogId = this.tradeLogIds.get(position.id);
+    if (tradeLogId) {
+      await this.logging.logTradeClose(
+        tradeLogId, exitPrice, reason, pnlUsd, 0, position.tp1Hit, position.tp2Hit,
+      );
+    }
+
+    this.signal.recordTradeResult(pnlUsd >= 0);
+    this.positions.delete(position.token);
+    this.tradeLogIds.delete(position.id);
+  }
+
+  private async runCloseAttempt<T>(
+    position: OpenPosition,
+    action: () => Promise<T | null>,
+  ): Promise<T | null> {
+    if (this.hlClient.isClosing(position.token)) {
+      return null;
+    }
+
     this.hlClient.markClosing(position.token);
-
     try {
-      const exitPrice = await this.execution.closeFullPosition(position, reason);
-      if (exitPrice === null) {
-        // Order failed — will retry on next tick
-        return;
-      }
-
-      const priceDiff = position.direction === 'long'
-        ? exitPrice - position.entryPrice
-        : position.entryPrice - exitPrice;
-      const pnlUsd = position.realizedPnl + (priceDiff / position.entryPrice) * position.notional;
-
-      const tradeLogId = this.tradeLogIds.get(position.id);
-      if (tradeLogId) {
-        await this.logging.logTradeClose(
-          tradeLogId, exitPrice, reason, pnlUsd, 0, position.tp1Hit, position.tp2Hit,
-        );
-      }
-
-      this.signal.recordTradeResult(pnlUsd >= 0);
-      this.positions.delete(position.token);
-      this.tradeLogIds.delete(position.id);
+      return await action();
     } finally {
       this.hlClient.clearClosing(position.token);
     }
   }
-
-  // ─── Restart resync ───────────────────────────────────────────
 
   private async syncPositionsFromExchange(): Promise<void> {
     try {
@@ -330,7 +324,7 @@ export class PositionManagerService implements OnModuleInit {
             ? entryPx * (1 + this.config.get<number>('exits.tp2Percent') / 100)
             : entryPx * (1 - this.config.get<number>('exits.tp2Percent') / 100),
           trailingHighest: entryPx,
-          openTime: Date.now() - 3600_000, // conservatively assume 1h ago
+          openTime: Date.now() - 3600_000,
           patternsFired: [],
           score: 0,
           marketCondition: 'sideways',
