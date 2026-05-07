@@ -395,13 +395,8 @@ export default function App() {
           lastEvent={lastEvent}
           onVoiceToggle={handleVoiceToggle}
           onScan={() => handleBotAction('/api/bot/scan', 'Manual scan requested.', {})}
-          onPause={() =>
-            handleBotAction('/api/bot/pause', 'Bot paused for 2 hours.', {
-              reason: 'manual_dashboard_pause',
-              durationMs: 2 * 60 * 60 * 1000,
-            })
-          }
-          onResume={() => handleBotAction('/api/bot/resume', 'Bot resumed.', {})}
+          onStop={() => handleBotAction('/api/bot/stop', 'Bot stopped. Position management is frozen until you start it again.', {})}
+          onStart={() => handleBotAction('/api/bot/start', 'Bot started.', {})}
         />
       )}
 

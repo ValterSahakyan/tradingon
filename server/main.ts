@@ -35,6 +35,10 @@ async function bootstrap() {
 
   const appConfig = app.get(AppConfigService);
   await appConfig.waitUntilReady();
+  const readinessIssues = appConfig.getLiveTradingReadiness();
+  if (readinessIssues.length > 0) {
+    throw new Error(`Live trading safety check failed: ${readinessIssues.join('; ')}`);
+  }
 
   logger.log(`Trading bot running on port ${port}`);
   logger.log(`Mode: ${appConfig.get<boolean>('hyperliquid.testnet') ? 'TESTNET' : 'MAINNET'}`);

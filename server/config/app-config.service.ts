@@ -109,6 +109,57 @@ export class AppConfigService implements OnModuleInit {
     return this.initError;
   }
 
+  getLiveTradingReadiness(): string[] {
+    const issues: string[] = [];
+    const live = this.get<boolean>('execution.enabled');
+    if (!live) {
+      return issues;
+    }
+    const isTestnet = this.get<boolean>('hyperliquid.testnet');
+
+    const requiredBoolean = (path: string, label: string) => {
+      const value = this.get<boolean>(path);
+      if (typeof value !== 'boolean') {
+        issues.push(`${label} is missing`);
+      }
+    };
+    const requiredPositive = (path: string, label: string) => {
+      const value = Number(this.get<number>(path) ?? 0);
+      if (!Number.isFinite(value) || value <= 0) {
+        issues.push(`${label} must be > 0`);
+      }
+    };
+    const requiredString = (path: string, label: string) => {
+      const value = String(this.get<string>(path) ?? '').trim();
+      if (!value) {
+        issues.push(`${label} is missing`);
+      }
+    };
+
+    if (!isTestnet && this.get<boolean>('execution.allowMainnet') !== true) {
+      issues.push('Allow Mainnet Trading must be enabled for live mainnet execution');
+    }
+    requiredString('hyperliquid.privateKey', 'API Wallet Private Key');
+    requiredString('hyperliquid.accountAddress', 'Main Account Address');
+    requiredString('hyperliquid.apiUrl', 'Hyperliquid API URL');
+    requiredString('hyperliquid.wsUrl', 'Hyperliquid WebSocket URL');
+    requiredPositive('risk.dailyLossLimit', 'Daily Loss Limit');
+    requiredPositive('risk.weeklyLossLimit', 'Weekly Loss Limit');
+    requiredPositive('risk.emergencyCapitalFloor', 'Emergency Capital Floor');
+    requiredPositive('capital.maxConcurrentPositions', 'Max Concurrent Positions');
+    requiredPositive('capital.marginScore2', 'Margin For Score 2');
+    requiredPositive('capital.marginScore3', 'Margin For Score 3');
+    requiredPositive('capital.marginScore4', 'Margin For Score 4');
+    requiredPositive('hyperliquid.maxEntrySpreadBps', 'Max Entry Spread Bps');
+    requiredPositive('hyperliquid.maxEntrySlippageBps', 'Max Entry Slippage Bps');
+    requiredPositive('filters.minDayVolume', 'Min Day Volume');
+    requiredPositive('filters.minOpenInterest', 'Min Open Interest');
+    requiredPositive('exits.stopLossPercent', 'Stop Loss %');
+    requiredPositive('exits.maxHoldHours', 'Max Hold Hours');
+
+    return issues;
+  }
+
   private async initialize(): Promise<void> {
     if (this.ready) {
       return;
@@ -285,6 +336,14 @@ export class AppConfigService implements OnModuleInit {
       return;
     }
 
+    if (key === 'hyperliquidMaxEntrySpreadBps' || key === 'hyperliquidMaxEntrySlippageBps') {
+      const numeric = Number(value);
+      if (!Number.isFinite(numeric) || numeric <= 0 || numeric > 500) {
+        throw new BadRequestException('Hyperliquid entry spread/slippage thresholds must be greater than 0 and less than or equal to 500 bps');
+      }
+      return;
+    }
+
     if (key === 'leverage') {
       const numeric = Number(value);
       if (!Number.isFinite(numeric) || numeric < 1) {
@@ -305,6 +364,14 @@ export class AppConfigService implements OnModuleInit {
       const numeric = Number(value);
       if (!Number.isFinite(numeric) || numeric < 0 || numeric > 1000) {
         throw new BadRequestException('Free Collateral Buffer USD must be between 0 and 1000');
+      }
+      return;
+    }
+
+    if (key === 'minDayVolume' || key === 'minOpenInterest') {
+      const numeric = Number(value);
+      if (!Number.isFinite(numeric) || numeric < 0) {
+        throw new BadRequestException('Liquidity filters must be greater than or equal to 0');
       }
       return;
     }

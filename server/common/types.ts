@@ -112,6 +112,7 @@ export interface OpenPosition {
   tp1Size: number;
   tp2Size: number;
   tp3Size: number;
+  stopOrderId?: number | null;
 }
 
 export interface HyperliquidOrderRequest {

@@ -17,6 +17,13 @@ export class HyperliquidWsService implements OnModuleInit, OnModuleDestroy {
   private reconnectTimer: NodeJS.Timeout | null = null;
   private pingTimer: NodeJS.Timeout | null = null;
   private isShuttingDown = false;
+  private connected = false;
+  private lastConnectedAt: number | null = null;
+  private lastDisconnectedAt: number | null = null;
+  private lastMessageAt: number | null = null;
+  private lastMidsAt: number | null = null;
+  private lastUserFillsAt: number | null = null;
+  private lastUserEventsAt: number | null = null;
 
   constructor(
     private readonly config: AppConfigService,
@@ -40,6 +47,8 @@ export class HyperliquidWsService implements OnModuleInit, OnModuleDestroy {
     this.ws = new WebSocket(wsUrl);
 
     this.ws.on('open', () => {
+      this.connected = true;
+      this.lastConnectedAt = Date.now();
       this.logger.log('WebSocket connected');
       this.subscribeToTrades();
       this.startPing();
@@ -59,6 +68,8 @@ export class HyperliquidWsService implements OnModuleInit, OnModuleDestroy {
     });
 
     this.ws.on('close', () => {
+      this.connected = false;
+      this.lastDisconnectedAt = Date.now();
       this.logger.warn('WebSocket disconnected');
       this.cleanup();
       if (!this.isShuttingDown) {
@@ -93,13 +104,29 @@ export class HyperliquidWsService implements OnModuleInit, OnModuleDestroy {
   }
 
   private handleMessage(msg: any) {
+    this.lastMessageAt = Date.now();
     if (msg.channel === 'allMids' && msg.data?.mids) {
+      this.lastMidsAt = this.lastMessageAt;
       this.emitter.emit('ws.mids', msg.data.mids as Record<string, string>);
     } else if (msg.channel === 'userFills') {
+      this.lastUserFillsAt = this.lastMessageAt;
       this.emitter.emit('ws.userFills', msg.data);
     } else if (msg.channel === 'userEvents') {
+      this.lastUserEventsAt = this.lastMessageAt;
       this.emitter.emit('ws.userEvents', msg.data);
     }
+  }
+
+  getStatus() {
+    return {
+      connected: this.connected && this.ws?.readyState === WebSocket.OPEN,
+      lastConnectedAt: this.lastConnectedAt,
+      lastDisconnectedAt: this.lastDisconnectedAt,
+      lastMessageAt: this.lastMessageAt,
+      lastMidsAt: this.lastMidsAt,
+      lastUserFillsAt: this.lastUserFillsAt,
+      lastUserEventsAt: this.lastUserEventsAt,
+    };
   }
 
   private startPing() {

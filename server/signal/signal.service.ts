@@ -316,16 +316,16 @@ export class SignalService {
       return { ok: false, reason: 'funding_too_high' };
     }
 
-    const ageDays = this.marketData.getTokenAgeDays(token);
-    const minAge = this.config.get<number>('filters.minTokenAgeDays');
-    if (ageDays < minAge) {
-      return { ok: false, reason: 'token_too_new' };
+    const dayVolume = this.marketData.getDayVolume(token);
+    const minDayVolume = this.config.get<number>('filters.minDayVolume');
+    if (dayVolume < minDayVolume) {
+      return { ok: false, reason: 'day_volume_too_low' };
     }
 
-    const marketCap = this.marketData.getMarketCap(token);
-    const minCap = this.config.get<number>('filters.minMarketCap');
-    if (marketCap < minCap) {
-      return { ok: false, reason: 'market_cap_too_small' };
+    const openInterest = this.marketData.getOpenInterest(token);
+    const minOpenInterest = this.config.get<number>('filters.minOpenInterest');
+    if (openInterest < minOpenInterest) {
+      return { ok: false, reason: 'open_interest_too_low' };
     }
 
     const lookbackCandles = candles.slice(-24);
@@ -457,6 +457,10 @@ export class SignalService {
         return 'Price already extended';
       case 'recent_loss_streak':
         return 'Risk cooldown after losses';
+      case 'day_volume_too_low':
+        return '24h volume too low';
+      case 'open_interest_too_low':
+        return 'Open interest too low';
       default:
         return reason.replaceAll('_', ' ');
     }

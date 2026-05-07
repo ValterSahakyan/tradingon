@@ -2,6 +2,23 @@ export interface BotStatus {
   state: string
   pauseReason?: string
   pauseUntil?: number
+  connectivity?: {
+    connected: boolean
+    lastConnectedAt?: number | null
+    lastDisconnectedAt?: number | null
+    lastMessageAt?: number | null
+    lastMidsAt?: number | null
+    lastUserFillsAt?: number | null
+    lastUserEventsAt?: number | null
+  }
+  protection?: {
+    protectedPositions: number
+    unprotectedPositions: number
+  }
+  actionRateLimit?: {
+    rateLimited: boolean
+    cooldownMs: number
+  }
   marketCondition: string
   marketMoves: { sol1h: number; btc4h: number }
   openPositions: number
@@ -110,6 +127,23 @@ export interface RuntimeInfo {
   initialized: boolean
   liveTradingEnabled: boolean
   scanIntervalSeconds: number
+  connectivity?: {
+    connected: boolean
+    lastConnectedAt?: number | null
+    lastDisconnectedAt?: number | null
+    lastMessageAt?: number | null
+    lastMidsAt?: number | null
+    lastUserFillsAt?: number | null
+    lastUserEventsAt?: number | null
+  }
+  protection?: {
+    protectedPositions: number
+    unprotectedPositions: number
+  }
+  actionRateLimit?: {
+    rateLimited: boolean
+    cooldownMs: number
+  }
   lastScanAt?: number
   lastScanResult?: { ok: boolean; message: string }
   signalDiagnostics?: {

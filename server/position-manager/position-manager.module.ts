@@ -8,6 +8,6 @@ import { SignalModule } from '../signal/signal.module';
 @Module({
   imports: [ExecutionModule, LoggingModule, SignalModule],
   providers: [PositionManagerService, HyperliquidWsService],
-  exports: [PositionManagerService],
+  exports: [PositionManagerService, HyperliquidWsService],
 })
 export class PositionManagerModule {}

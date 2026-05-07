@@ -4,6 +4,7 @@ import { LoggingService } from '../logging/logging.service';
 
 export type BotState =
   | 'active'
+  | 'paused_manual'
   | 'paused_consecutive_loss'
   | 'paused_daily_limit'
   | 'paused_bear_market'
@@ -32,8 +33,6 @@ export class RiskService {
     private readonly logging: LoggingService,
   ) {}
 
-  // ─── Primary gate — called before every trade ─────────────────
-
   async canTrade(): Promise<{ allowed: boolean; reason?: string }> {
     this.checkPauseExpiry();
 
@@ -41,7 +40,6 @@ export class RiskService {
       return { allowed: false, reason: this.state };
     }
 
-    // Daily loss limit
     const todayPnl = await this.logging.getTodayPnl();
     const dailyLimit = this.config.get<number>('risk.dailyLossLimit');
     if (todayPnl <= -dailyLimit) {
@@ -49,7 +47,6 @@ export class RiskService {
       return { allowed: false, reason: 'daily_loss_limit' };
     }
 
-    // Weekly loss limit
     const weekPnl = await this.logging.getWeekPnl();
     const weeklyLimit = this.config.get<number>('risk.weeklyLossLimit');
     if (weekPnl <= -weeklyLimit) {
@@ -57,7 +54,6 @@ export class RiskService {
       return { allowed: false, reason: 'weekly_loss_limit' };
     }
 
-    // Consecutive losses
     const consecutive = await this.logging.getConsecutiveLosses();
     const pause2h = this.config.get<number>('risk.consecutiveLossPause2h');
     const pauseDay = this.config.get<number>('risk.consecutiveLossPauseDay');
@@ -75,8 +71,6 @@ export class RiskService {
     return { allowed: true };
   }
 
-  // ─── Emergency capital check ───────────────────────────────────
-
   async checkCapital(currentCapital: number): Promise<boolean> {
     const floor = this.config.get<number>('risk.emergencyCapitalFloor');
     if (currentCapital < floor) {
@@ -85,27 +79,27 @@ export class RiskService {
         `Emergency stop: capital $${currentCapital.toFixed(2)} < floor $${floor}`,
       );
       this.logger.error(
-        `EMERGENCY STOP — capital $${currentCapital.toFixed(2)} below floor $${floor}`,
+        `EMERGENCY STOP - capital $${currentCapital.toFixed(2)} below floor $${floor}`,
       );
       return false;
     }
     return true;
   }
 
-  // ─── Manual controls ───────────────────────────────────────────
-
   pause(reason: string, durationMs?: number): void {
     if (durationMs) {
       this.pauseFor(durationMs, reason, 'paused_bear_market');
-    } else {
-      this.state = 'paused_bear_market';
-      this.logger.warn(`Bot paused — ${reason}`);
+      return;
     }
+
+    this.state = 'paused_manual';
+    this.pauseTimer = null;
+    this.logger.warn(`Bot manually stopped - ${reason}`);
   }
 
   resume(): void {
     if (this.state === 'stopped_emergency' || this.state === 'stopped_weekly_limit') {
-      this.logger.warn('Cannot auto-resume from emergency/weekly stop — manual restart required');
+      this.logger.warn('Cannot auto-resume from emergency/weekly stop - manual restart required');
       return;
     }
     this.state = 'active';
@@ -130,13 +124,16 @@ export class RiskService {
     return this.state === 'stopped_emergency' || this.state === 'stopped_weekly_limit';
   }
 
-  // ─── Internal ──────────────────────────────────────────────────
+  shouldManagePositions(): boolean {
+    this.checkPauseExpiry();
+    return this.state !== 'paused_manual';
+  }
 
   private pauseFor(ms: number, reason: string, state: BotState): void {
     const until = Date.now() + ms;
     this.pauseTimer = { until, reason };
     this.state = state;
-    this.logger.warn(`Bot paused for ${Math.round(ms / 60_000)} min — ${reason}`);
+    this.logger.warn(`Bot paused for ${Math.round(ms / 60_000)} min - ${reason}`);
   }
 
   private pauseUntilTomorrow(reason: string, state: BotState): void {
@@ -156,19 +153,19 @@ export class RiskService {
     ) {
       this.state = 'active';
       this.pauseTimer = null;
-      this.logger.log('Pause expired — bot resumed');
+      this.logger.log('Pause expired - bot resumed');
     }
   }
 
   private async triggerCircuitBreaker(code: string, detail: string): Promise<void> {
     this.pauseUntilTomorrow(code, 'paused_daily_limit');
     await this.logging.markCircuitBreaker(`${code}: ${detail}`);
-    this.logger.error(`Circuit breaker: ${code} — ${detail}`);
+    this.logger.error(`Circuit breaker: ${code} - ${detail}`);
   }
 
   private async triggerWeeklyStop(detail: string): Promise<void> {
     this.state = 'stopped_weekly_limit';
     await this.logging.markCircuitBreaker(`weekly_loss_limit: ${detail}`);
-    this.logger.error(`WEEKLY STOP — ${detail} — manual review required`);
+    this.logger.error(`WEEKLY STOP - ${detail} - manual review required`);
   }
 }

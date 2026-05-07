@@ -14,6 +14,7 @@ import { OpenPosition, TradeSignal } from '../common/types';
 import { SettingField } from '../config/app-settings.definitions';
 import { repoRoot } from '../config/paths';
 import { SignalService } from '../signal/signal.service';
+import { HyperliquidWsService } from '../position-manager/hyperliquid-ws.service';
 
 @Injectable()
 export class DashboardService {
@@ -31,6 +32,7 @@ export class DashboardService {
     private readonly logging: LoggingService,
     private readonly signal: SignalService,
     private readonly execution: ExecutionService,
+    private readonly ws: HyperliquidWsService,
     @InjectRepository(TradeLog)
     private readonly tradeRepo: Repository<TradeLog>,
   ) {}
@@ -79,6 +81,9 @@ export class DashboardService {
     const riskSnapshot = this.risk.getSnapshot();
     const trackedTokens = this.marketData.getTrackedTokens().length;
     const openPositions = this.positions.getPositionCount();
+    const wsStatus = this.ws.getStatus();
+    const protection = this.positions.getProtectionStatus();
+    const actionRateLimit = this.execution.getActionStatus();
 
     return {
       state: riskSnapshot.state,
@@ -91,6 +96,9 @@ export class DashboardService {
       accountValue: this.accountValue,
       accountValueAt: this.accountValueAt,
       timestamp: Date.now(),
+      connectivity: wsStatus,
+      protection,
+      actionRateLimit,
       marketMoves: {
         sol1h: +this.marketData.getSolPriceChangePct(3600_000).toFixed(2),
         btc4h: +this.marketData.getBtcPriceChangePct(4 * 3600_000).toFixed(2),

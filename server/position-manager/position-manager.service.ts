@@ -7,6 +7,7 @@ import { SignalService } from '../signal/signal.service';
 import { HyperliquidClient } from '../execution/hyperliquid.client';
 import { HyperliquidWsService } from './hyperliquid-ws.service';
 import { ExitReason, OpenPosition, TradeSignal } from '../common/types';
+import { RiskService } from '../risk/risk.service';
 
 @Injectable()
 export class PositionManagerService implements OnModuleInit {
@@ -22,6 +23,7 @@ export class PositionManagerService implements OnModuleInit {
     private readonly signal: SignalService,
     private readonly hlClient: HyperliquidClient,
     private readonly ws: HyperliquidWsService,
+    private readonly risk: RiskService,
   ) {}
 
   onModuleInit() {
@@ -67,6 +69,13 @@ export class PositionManagerService implements OnModuleInit {
       return false;
     }
 
+    const protectedOnExchange = await this.armExchangeStop(position);
+    if (!protectedOnExchange) {
+      this.logger.error(`Exchange stop could not be armed for ${position.token}; closing position immediately`);
+      await this.execution.closeFullPosition(position, 'emergency');
+      return false;
+    }
+
     const tradeLogId = await this.logging.logTradeOpen(signal, position);
     this.positions.set(signal.token, position);
     this.tradeLogIds.set(position.id, tradeLogId);
@@ -79,9 +88,20 @@ export class PositionManagerService implements OnModuleInit {
   getOpenPositions(): Map<string, OpenPosition> { return this.positions; }
   getOpenTokens(): Set<string> { return new Set(this.positions.keys()); }
   getPositionCount(): number { return this.positions.size; }
+  getProtectionStatus(): { protectedPositions: number; unprotectedPositions: number } {
+    const positions = [...this.positions.values()];
+    return {
+      protectedPositions: positions.filter((position) => position.stopOrderId != null).length,
+      unprotectedPositions: positions.filter((position) => position.stopOrderId == null).length,
+    };
+  }
 
   @OnEvent('ws.mids')
   async handlePriceUpdate(mids: Record<string, string>): Promise<void> {
+    if (!this.risk.shouldManagePositions()) {
+      return;
+    }
+
     const tokens = [...this.positions.keys()];
     for (const token of tokens) {
       const position = this.positions.get(token);
@@ -149,6 +169,7 @@ export class PositionManagerService implements OnModuleInit {
           this.applyPartialClose(position, closeSize, exitPx);
           position.tp1Hit = true;
           position.stopPrice = position.entryPrice;
+          await this.refreshExchangeStop(position);
           this.logger.log(`TP1 hit ${position.token} - stop moved to breakeven`);
         }
       }
@@ -168,6 +189,7 @@ export class PositionManagerService implements OnModuleInit {
         if (exitPx !== null) {
           this.applyPartialClose(position, closeSize, exitPx);
           position.tp2Hit = true;
+          await this.refreshExchangeStop(position);
           this.logger.log(`TP2 hit ${position.token}`);
         }
       }
@@ -244,6 +266,7 @@ export class PositionManagerService implements OnModuleInit {
     this.signal.recordTradeResult(pnlUsd >= 0);
     this.positions.delete(position.token);
     this.tradeLogIds.delete(position.id);
+    await this.hlClient.cancelCoinTriggerOrders(position.token);
   }
 
   private async runCloseAttempt<T>(
@@ -259,6 +282,39 @@ export class PositionManagerService implements OnModuleInit {
       return await action();
     } finally {
       this.hlClient.clearClosing(position.token);
+    }
+  }
+
+  private async armExchangeStop(position: OpenPosition): Promise<boolean> {
+    await this.hlClient.cancelCoinTriggerOrders(position.token);
+    const isBuy = position.direction === 'short';
+    const result = await this.hlClient.placeTriggerMarketOrder(
+      position.token,
+      isBuy,
+      position.size,
+      position.stopPrice,
+      'sl',
+      true,
+    );
+
+    if (!result || (result.status !== 'resting' && result.status !== 'filled')) {
+      return false;
+    }
+
+    position.stopOrderId = result.oid ?? null;
+    return true;
+  }
+
+  private async refreshExchangeStop(position: OpenPosition): Promise<void> {
+    if (position.size <= 0) {
+      await this.hlClient.cancelCoinTriggerOrders(position.token);
+      position.stopOrderId = null;
+      return;
+    }
+
+    const armed = await this.armExchangeStop(position);
+    if (!armed) {
+      this.logger.warn(`Failed to refresh exchange stop for ${position.token}`);
     }
   }
 
@@ -299,21 +355,22 @@ export class PositionManagerService implements OnModuleInit {
         const tp1Size = absSz * tp1Ratio;
         const tp2Size = absSz * tp2Ratio;
         const tp3Size = Math.max(0, absSz - tp1Size - tp2Size);
+        const existing = this.positions.get(p.coin);
 
         this.positions.set(p.coin, {
-          id: `${p.coin}-restored-${Date.now()}`,
+          id: existing?.id ?? `${p.coin}-restored-${Date.now()}`,
           token: p.coin,
           direction,
           entryPrice: entryPx,
-          currentPrice: entryPx,
+          currentPrice: existing?.currentPrice ?? entryPx,
           margin: parseFloat(p.marginUsed ?? '0'),
           notional,
           leverage: p.leverage?.value ?? this.config.get<number>('capital.leverage'),
           size: absSz,
           unrealizedPnl: parseFloat(p.unrealizedPnl ?? '0'),
-          realizedPnl: 0,
-          tp1Hit: false,
-          tp2Hit: false,
+          realizedPnl: existing?.realizedPnl ?? 0,
+          tp1Hit: existing?.tp1Hit ?? false,
+          tp2Hit: existing?.tp2Hit ?? false,
           stopPrice: direction === 'long'
             ? entryPx * (1 - stopPct)
             : entryPx * (1 + stopPct),
@@ -323,18 +380,52 @@ export class PositionManagerService implements OnModuleInit {
           tp2Price: direction === 'long'
             ? entryPx * (1 + this.config.get<number>('exits.tp2Percent') / 100)
             : entryPx * (1 - this.config.get<number>('exits.tp2Percent') / 100),
-          trailingHighest: entryPx,
-          openTime: Date.now() - 3600_000,
-          patternsFired: [],
-          score: 0,
-          marketCondition: 'sideways',
+          trailingHighest: existing?.trailingHighest ?? entryPx,
+          openTime: existing?.openTime ?? Date.now(),
+          patternsFired: existing?.patternsFired ?? [],
+          score: existing?.score ?? 0,
+          marketCondition: existing?.marketCondition ?? 'sideways',
           tp1Size,
           tp2Size,
           tp3Size,
+          stopOrderId: existing?.stopOrderId ?? null,
         });
       }
+
+      await this.reconcileExchangeProtection();
     } catch (err) {
       this.logger.error(`syncPositionsFromExchange failed: ${err.message}`);
+    }
+  }
+
+  private async reconcileExchangeProtection(): Promise<void> {
+    const openOrders = await this.hlClient.getFrontendOpenOrders();
+    const stopOrdersByCoin = new Map<string, number>();
+
+    for (const order of openOrders) {
+      if (
+        typeof order?.coin === 'string'
+        && order.isTrigger === true
+        && order.triggerCondition === 'sl'
+        && typeof order?.oid === 'number'
+      ) {
+        stopOrdersByCoin.set(order.coin, Number(order.oid));
+      }
+    }
+
+    for (const position of this.positions.values()) {
+      const existingOrderId = stopOrdersByCoin.get(position.token);
+      if (existingOrderId != null) {
+        position.stopOrderId = existingOrderId;
+        continue;
+      }
+
+      this.logger.warn(`No exchange stop found for restored ${position.token}; re-arming protection`);
+      const armed = await this.armExchangeStop(position);
+      if (!armed) {
+        position.stopOrderId = null;
+        this.logger.error(`Failed to re-arm exchange stop for restored ${position.token}`);
+      }
     }
   }
 

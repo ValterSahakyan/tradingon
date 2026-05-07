@@ -123,6 +123,8 @@ export function validateRuntimeEnv(): void {
   readNumber('PORT', 3002, 1);
   readNumber('DASHBOARD_SESSION_TTL_HOURS', 12, 1);
   validateOptionalNumber('HYPERLIQUID_MARKET_ORDER_SLIPPAGE', 0);
+  validateOptionalNumber('HYPERLIQUID_MAX_ENTRY_SPREAD_BPS', 0);
+  validateOptionalNumber('HYPERLIQUID_MAX_ENTRY_SLIPPAGE_BPS', 0);
   validateOptionalNumber('INITIAL_CAPITAL', 0);
   validateOptionalNumber('MAX_CONCURRENT_POSITIONS', 1);
   validateOptionalNumber('DEFAULT_LEVERAGE', 1);
@@ -144,6 +146,8 @@ export function validateRuntimeEnv(): void {
   validateOptionalNumber('FUNDING_RATE_MAX', 0);
   validateOptionalNumber('MIN_MARKET_CAP', 0);
   validateOptionalNumber('MIN_TOKEN_AGE_DAYS', 0);
+  validateOptionalNumber('MIN_DAY_VOLUME', 0);
+  validateOptionalNumber('MIN_OPEN_INTEREST', 0);
   validateOptionalNumber('MAX_PRICE_CHANGE_2H', 0);
   validateOptionalNumber('CONSECUTIVE_LOSS_FILTER', 0);
   validateOptionalNumber('SCAN_INTERVAL_SECONDS', 1);

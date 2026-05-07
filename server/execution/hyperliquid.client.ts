@@ -16,7 +16,8 @@ interface OrderWire {
   p: string;
   s: string;
   r: boolean;
-  t: { limit: { tif: string } };
+  t: { limit: { tif: string } } | { trigger: { isMarket: boolean; triggerPx: string; tpsl: 'tp' | 'sl' } };
+  c?: string;
 }
 
 interface FillResult {
@@ -36,6 +37,36 @@ interface PortfolioWindow {
   accountValueHistory: Array<[number, string]>;
   pnlHistory: Array<[number, string]>;
   vlm: string;
+}
+
+interface L2Level {
+  px: number;
+  sz: number;
+}
+
+export interface BookLiquiditySnapshot {
+  bestBid: number;
+  bestAsk: number;
+  midPrice: number;
+  spreadBps: number;
+  bidDepthUsd: number;
+  askDepthUsd: number;
+}
+
+export interface TakerFillEstimate {
+  midPrice: number;
+  expectedAvgPrice: number;
+  worstPrice: number;
+  spreadBps: number;
+  slippageBps: number;
+  sufficientDepth: boolean;
+  filledSize: number;
+  requiredSize: number;
+}
+
+export interface HyperliquidActionStatus {
+  rateLimited: boolean;
+  cooldownMs: number;
 }
 
 type PriceRoundingMode = 'nearest' | 'up' | 'down';
@@ -146,6 +177,41 @@ export class HyperliquidClient implements OnModuleInit {
     return this.sendOrder([wire]);
   }
 
+  async placeTriggerMarketOrder(
+    coin: string,
+    isBuy: boolean,
+    sz: number,
+    triggerPx: number,
+    tpsl: 'tp' | 'sl',
+    reduceOnly = true,
+  ): Promise<FillResult | null> {
+    if (!await this.ensureReady()) {
+      return null;
+    }
+    const asset = this.assets.get(coin);
+    if (!asset) {
+      this.logger.error(`Unknown asset: ${coin}`);
+      return null;
+    }
+
+    const wire: OrderWire = {
+      a: asset.index,
+      b: isBuy,
+      p: this.fmtPrice(triggerPx, asset.szDecimals, 'nearest'),
+      s: this.fmtSize(this.quantizeSize(sz, asset.szDecimals, 'nearest'), asset.szDecimals),
+      r: reduceOnly,
+      t: {
+        trigger: {
+          isMarket: true,
+          triggerPx: this.fmtPrice(triggerPx, asset.szDecimals, 'nearest'),
+          tpsl,
+        },
+      },
+    };
+
+    return this.sendOrder([wire], 'positionTpsl');
+  }
+
   async cancelOrder(coin: string, oid: number): Promise<boolean> {
     const http = await this.getHttp();
     const asset = this.assets.get(coin);
@@ -247,6 +313,14 @@ export class HyperliquidClient implements OnModuleInit {
     this.closingInFlight.delete(coin);
   }
 
+  getActionStatus(): HyperliquidActionStatus {
+    const cooldownMs = Math.max(0, this.actionRateLimitedUntil - Date.now());
+    return {
+      rateLimited: cooldownMs > 0,
+      cooldownMs,
+    };
+  }
+
   async getOpenPositions(): Promise<HyperliquidPosition[]> {
     const http = await this.getHttp();
     if (!http || !this.wallet) {
@@ -264,6 +338,35 @@ export class HyperliquidClient implements OnModuleInit {
     } catch (err) {
       this.logger.error(`getOpenPositions failed: ${err.message}`);
       return [];
+    }
+  }
+
+  async getFrontendOpenOrders(): Promise<any[]> {
+    const http = await this.getHttp();
+    const user = this.accountAddress ?? this.wallet?.address;
+    if (!http || !user) {
+      return [];
+    }
+
+    try {
+      const res = await http.post('/info', { type: 'frontendOpenOrders', user });
+      return Array.isArray(res.data) ? res.data : [];
+    } catch (err) {
+      this.logger.warn(`getFrontendOpenOrders failed: ${this.formatAxiosError(err)}`);
+      return [];
+    }
+  }
+
+  async cancelCoinTriggerOrders(coin: string): Promise<void> {
+    const orders = await this.getFrontendOpenOrders();
+    const triggerOrders = orders.filter((order) =>
+      order?.coin === coin
+      && order?.isTrigger === true
+      && typeof order?.oid === 'number',
+    );
+
+    for (const order of triggerOrders) {
+      await this.cancelOrder(coin, Number(order.oid));
     }
   }
 
@@ -489,6 +592,99 @@ export class HyperliquidClient implements OnModuleInit {
     }
   }
 
+  async getBookLiquidity(coin: string): Promise<BookLiquiditySnapshot | null> {
+    const [bids, asks] = await this.getL2Levels(coin);
+    if (bids.length === 0 || asks.length === 0) {
+      return null;
+    }
+
+    const bestBid = bids[0].px;
+    const bestAsk = asks[0].px;
+    if (bestBid <= 0 || bestAsk <= 0 || bestAsk < bestBid) {
+      return null;
+    }
+
+    const midPrice = (bestBid + bestAsk) / 2;
+    const spreadBps = midPrice > 0 ? ((bestAsk - bestBid) / midPrice) * 10_000 : 0;
+    const bidDepthUsd = bids.reduce((sum, level) => sum + level.px * level.sz, 0);
+    const askDepthUsd = asks.reduce((sum, level) => sum + level.px * level.sz, 0);
+
+    return {
+      bestBid,
+      bestAsk,
+      midPrice,
+      spreadBps,
+      bidDepthUsd,
+      askDepthUsd,
+    };
+  }
+
+  async estimateTakerFill(
+    coin: string,
+    isBuy: boolean,
+    size: number,
+  ): Promise<TakerFillEstimate | null> {
+    if (!Number.isFinite(size) || size <= 0) {
+      return null;
+    }
+
+    const [bids, asks] = await this.getL2Levels(coin);
+    if (bids.length === 0 || asks.length === 0) {
+      return null;
+    }
+
+    const bestBid = bids[0].px;
+    const bestAsk = asks[0].px;
+    if (bestBid <= 0 || bestAsk <= 0 || bestAsk < bestBid) {
+      return null;
+    }
+
+    const side = isBuy ? asks : bids;
+    let remaining = size;
+    let filledSize = 0;
+    let totalNotional = 0;
+    let worstPrice = side[0].px;
+
+    for (const level of side) {
+      if (remaining <= 0) {
+        break;
+      }
+
+      const levelSize = Math.max(0, level.sz);
+      if (level.px <= 0 || levelSize <= 0) {
+        continue;
+      }
+
+      const fillSize = Math.min(remaining, levelSize);
+      filledSize += fillSize;
+      totalNotional += fillSize * level.px;
+      worstPrice = level.px;
+      remaining -= fillSize;
+    }
+
+    if (filledSize <= 0 || totalNotional <= 0) {
+      return null;
+    }
+
+    const midPrice = (bestBid + bestAsk) / 2;
+    const expectedAvgPrice = totalNotional / filledSize;
+    const spreadBps = midPrice > 0 ? ((bestAsk - bestBid) / midPrice) * 10_000 : 0;
+    const slippageBps = midPrice > 0
+      ? (Math.abs(expectedAvgPrice - midPrice) / midPrice) * 10_000
+      : 0;
+
+    return {
+      midPrice,
+      expectedAvgPrice,
+      worstPrice,
+      spreadBps,
+      slippageBps,
+      sufficientDepth: remaining <= 1e-9,
+      filledSize,
+      requiredSize: size,
+    };
+  }
+
   getSzDecimals(coin: string): number {
     return this.assets.get(coin)?.szDecimals ?? 4;
   }
@@ -559,7 +755,7 @@ export class HyperliquidClient implements OnModuleInit {
     return ethers.utils.keccak256(buf);
   }
 
-  private async sendOrder(orders: OrderWire[]): Promise<FillResult | null> {
+  private async sendOrder(orders: OrderWire[], grouping: 'na' | 'normalTpsl' | 'positionTpsl' = 'na'): Promise<FillResult | null> {
     const http = await this.getHttp();
     if (!http) {
       return null;
@@ -569,7 +765,7 @@ export class HyperliquidClient implements OnModuleInit {
     }
 
     const vaultAddress = this.getVaultAddress();
-    const action = { type: 'order', orders, grouping: 'na' };
+    const action = { type: 'order', orders, grouping };
     try {
       this.logger.log(`Sending order: ${JSON.stringify({ action, vaultAddress })}`);
       const { sig, nonce } = await this.signL1Action(action, vaultAddress);
@@ -937,6 +1133,37 @@ export class HyperliquidClient implements OnModuleInit {
   private async ensureReady(): Promise<boolean> {
     await this.ensureConfigured();
     return this.http !== null && this.wallet !== null && this.assets.size > 0;
+  }
+
+  private async getL2Levels(coin: string): Promise<[L2Level[], L2Level[]]> {
+    const http = await this.getHttp();
+    if (!http) {
+      return [[], []];
+    }
+
+    try {
+      const res = await http.post('/info', { type: 'l2Book', coin });
+      const levels = Array.isArray(res.data?.levels) ? res.data.levels : [];
+      const bids = this.parseL2Side(levels[0]);
+      const asks = this.parseL2Side(levels[1]);
+      return [bids, asks];
+    } catch (err) {
+      this.logger.warn(`l2Book lookup failed for ${coin}: ${this.formatAxiosError(err)}`);
+      return [[], []];
+    }
+  }
+
+  private parseL2Side(rawSide: unknown): L2Level[] {
+    if (!Array.isArray(rawSide)) {
+      return [];
+    }
+
+    return rawSide
+      .map((level) => ({
+        px: Number((level as any)?.px ?? 0),
+        sz: Number((level as any)?.sz ?? 0),
+      }))
+      .filter((level) => Number.isFinite(level.px) && level.px > 0 && Number.isFinite(level.sz) && level.sz > 0);
   }
 
   fmtPrice(price: number, szDecimals = 4, mode: PriceRoundingMode = 'nearest'): string {

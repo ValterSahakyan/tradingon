@@ -50,4 +50,19 @@ describe('RiskService', () => {
     expect(result).toEqual({ allowed: false, reason: 'consecutive_loss_pause_day' });
     expect(service.getSnapshot().state).toBe('paused_consecutive_loss');
   });
+
+  it('enters paused_manual when manually stopped and freezes position management', () => {
+    service.pause('manual_stop');
+
+    expect(service.getSnapshot().state).toBe('paused_manual');
+    expect(service.shouldManagePositions()).toBe(false);
+  });
+
+  it('resumes position management after manual start', () => {
+    service.pause('manual_stop');
+    service.resume();
+
+    expect(service.getSnapshot().state).toBe('active');
+    expect(service.shouldManagePositions()).toBe(true);
+  });
 });

@@ -8,6 +8,8 @@ import { RiskService } from '../risk/risk.service';
 import { LoggingService } from '../logging/logging.service';
 import { ExecutionService } from '../execution/execution.service';
 import { DashboardService } from '../dashboard/dashboard.service';
+import { HyperliquidClient } from '../execution/hyperliquid.client';
+import { HyperliquidWsService } from '../position-manager/hyperliquid-ws.service';
 
 @Injectable()
 export class BotService implements OnModuleInit {
@@ -31,6 +33,8 @@ export class BotService implements OnModuleInit {
     private readonly logging: LoggingService,
     private readonly execution: ExecutionService,
     private readonly dashboard: DashboardService,
+    private readonly hlClient: HyperliquidClient,
+    private readonly ws: HyperliquidWsService,
   ) {}
 
   onModuleInit() {
@@ -113,6 +117,7 @@ export class BotService implements OnModuleInit {
   }
 
   getRuntimeStatus() {
+    const actionStatus = this.hlClient.getActionStatus();
     return {
       isRunning: this.isRunning,
       lastScanAt: this.lastScanAt,
@@ -122,6 +127,9 @@ export class BotService implements OnModuleInit {
       initialized: this.initialized,
       mode: this.config.get<boolean>('hyperliquid.testnet') ? 'testnet' : 'mainnet',
       signalDiagnostics: this.signal.getLastDiagnostics(),
+      connectivity: this.ws.getStatus(),
+      actionRateLimit: actionStatus,
+      protection: this.positions.getProtectionStatus(),
     };
   }
 
@@ -139,7 +147,9 @@ export class BotService implements OnModuleInit {
 
   private async scanCycle(): Promise<void> {
     await this.marketData.refreshAll();
-    await this.positions.checkTimeStops();
+    if (this.risk.shouldManagePositions()) {
+      await this.positions.checkTimeStops();
+    }
 
     const liveTradingEnabled = this.config.get<boolean>('execution.enabled');
     const maxPositions = this.config.get<number>('capital.maxConcurrentPositions');

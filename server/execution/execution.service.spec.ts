@@ -33,8 +33,27 @@ describe('ExecutionService', () => {
       setLeverage: (jest.fn(() => Promise.resolve(true)) as any),
       placeMarketOrder: jest.fn() as any,
       getMidPrice: jest.fn() as any,
+      getActionStatus: jest.fn(() => ({ rateLimited: false, cooldownMs: 0 })) as any,
       getAccountValue: jest.fn() as any,
       getAvailableCollateral: jest.fn(() => Promise.resolve(100)) as any,
+      getBookLiquidity: jest.fn(() => Promise.resolve({
+        bestBid: 9.99,
+        bestAsk: 10.01,
+        midPrice: 10,
+        spreadBps: 20,
+        bidDepthUsd: 100000,
+        askDepthUsd: 100000,
+      })) as any,
+      estimateTakerFill: jest.fn((_token: string, _isBuy: boolean, size: number) => Promise.resolve({
+        midPrice: 10,
+        expectedAvgPrice: 10,
+        worstPrice: 10.01,
+        spreadBps: 20,
+        slippageBps: 0,
+        sufficientDepth: true,
+        filledSize: size,
+        requiredSize: size,
+      })) as any,
     };
 
     service = new ExecutionService(config as unknown as AppConfigService, hl as any);
@@ -53,6 +72,29 @@ describe('ExecutionService', () => {
       direction: 'long',
       score: 2,
       patternsFired: ['volume_spike', 'accumulation_breakout'],
+      currentPrice: 10,
+      suggestedMargin: 10,
+      notional: 30,
+      leverage: 3,
+      stopPrice: 9.3,
+      tp1Price: 10.7,
+      tp2Price: 11.4,
+      marketCondition: 'sideways',
+    });
+
+    expect(result).toBeNull();
+    expect(hl.setLeverage).not.toHaveBeenCalled();
+    expect(hl.placeMarketOrder).not.toHaveBeenCalled();
+  });
+
+  it('refuses to open positions while Hyperliquid action cooldown is active', async () => {
+    hl.getActionStatus.mockReturnValue({ rateLimited: true, cooldownMs: 8000 });
+
+    const result = await service.openPosition({
+      token: 'SOL',
+      direction: 'long',
+      score: 2,
+      patternsFired: ['volume_spike'],
       currentPrice: 10,
       suggestedMargin: 10,
       notional: 30,
@@ -126,6 +168,24 @@ describe('ExecutionService', () => {
       status: 'filled',
       avgPx: 2,
       totalSz: 5,
+    }));
+    hl.getBookLiquidity.mockResolvedValue({
+      bestBid: 1.99,
+      bestAsk: 2.01,
+      midPrice: 2,
+      spreadBps: 100,
+      bidDepthUsd: 100000,
+      askDepthUsd: 100000,
+    });
+    hl.estimateTakerFill.mockImplementation((_token: string, _isBuy: boolean, size: number) => Promise.resolve({
+      midPrice: 2,
+      expectedAvgPrice: 2,
+      worstPrice: 2.01,
+      spreadBps: 20,
+      slippageBps: 0,
+      sufficientDepth: true,
+      filledSize: size,
+      requiredSize: size,
     }));
 
     const result = await service.openPosition({

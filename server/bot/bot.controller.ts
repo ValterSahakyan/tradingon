@@ -39,6 +39,24 @@ export class BotController {
     };
   }
 
+  @Post('stop')
+  stop() {
+    this.risk.pause('manual_stop');
+    return {
+      ok: true,
+      state: this.risk.getSnapshot(),
+    };
+  }
+
+  @Post('start')
+  start() {
+    this.risk.resume();
+    return {
+      ok: true,
+      state: this.risk.getSnapshot(),
+    };
+  }
+
   @Post('close-position')
   async closePosition(@Body() body: { token: string }) {
     return this.bot.closePosition(body.token);

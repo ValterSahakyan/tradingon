@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { AppConfigService } from '../config/app-config.service';
 import { HyperliquidClient } from './hyperliquid.client';
 import { OpenPosition, TradeSignal } from '../common/types';
+import { HyperliquidActionStatus } from './hyperliquid.client';
 
 @Injectable()
 export class ExecutionService {
@@ -17,16 +18,24 @@ export class ExecutionService {
       return null;
     }
 
+    const actionStatus = this.hl.getActionStatus();
+    if (actionStatus.rateLimited) {
+      this.logger.warn(
+        `Refusing to open ${signal.direction} ${signal.token}: Hyperliquid action cooldown active for ${Math.ceil(actionStatus.cooldownMs / 1000)}s`,
+      );
+      return null;
+    }
+
     const { token, direction, currentPrice, notional } = signal;
     const leverage = signal.leverage ?? this.config.get<number>('capital.leverage');
     const minOrderNotional = this.config.get<number>('capital.minOrderNotional');
     const freeCollateralBufferUsd = this.config.get<number>('capital.freeCollateralBufferUsd');
     const exchangeMinOrderNotional = this.config.get<number>('hyperliquid.exchangeMinOrderNotional');
+    const maxEntrySpreadBps = this.config.get<number>('hyperliquid.maxEntrySpreadBps');
+    const maxEntrySlippageBps = this.config.get<number>('hyperliquid.maxEntrySlippageBps');
     const effectiveNotional = Math.max(notional, minOrderNotional, exchangeMinOrderNotional);
     const effectiveMargin = effectiveNotional / leverage;
 
-    // Standard accounts should trade isolated. Unified/portfolio accounts can only
-    // use exchange-managed cross collateral, so the client normalizes that internally.
     const leverageReady = await this.hl.setLeverage(token, leverage);
     if (!leverageReady) {
       this.logger.error(`Refusing to open ${direction} ${token}: leverage setup failed`);
@@ -34,11 +43,15 @@ export class ExecutionService {
     }
 
     const isBuy = direction === 'long';
-    const sz = this.calculateSize(effectiveNotional, currentPrice);
+    const bookLiquidity = await this.hl.getBookLiquidity(token);
+    const referencePrice = bookLiquidity?.midPrice && bookLiquidity.midPrice > 0
+      ? bookLiquidity.midPrice
+      : currentPrice;
+    const sz = this.calculateSize(effectiveNotional, referencePrice);
     const availableCollateral = await this.hl.getAvailableCollateral();
 
     if (sz <= 0) {
-      this.logger.warn(`Zero size for ${token} — skipping`);
+      this.logger.warn(`Zero size for ${token} - skipping`);
       return null;
     }
 
@@ -54,6 +67,31 @@ export class ExecutionService {
       }
     }
 
+    const takerEstimate = await this.hl.estimateTakerFill(token, isBuy, sz);
+    if (!takerEstimate) {
+      this.logger.warn(`Skipping ${token} ${direction}: live order book unavailable`);
+      return null;
+    }
+    if (!takerEstimate.sufficientDepth) {
+      this.logger.warn(
+        `Skipping ${token} ${direction}: insufficient visible depth for ${sz.toFixed(6)} contracts ` +
+        `(fillable=${takerEstimate.filledSize.toFixed(6)})`,
+      );
+      return null;
+    }
+    if (takerEstimate.spreadBps > maxEntrySpreadBps) {
+      this.logger.warn(
+        `Skipping ${token} ${direction}: spread ${takerEstimate.spreadBps.toFixed(1)}bps exceeds max ${maxEntrySpreadBps}bps`,
+      );
+      return null;
+    }
+    if (takerEstimate.slippageBps > maxEntrySlippageBps) {
+      this.logger.warn(
+        `Skipping ${token} ${direction}: estimated taker slippage ${takerEstimate.slippageBps.toFixed(1)}bps exceeds max ${maxEntrySlippageBps}bps`,
+      );
+      return null;
+    }
+
     if (effectiveNotional > notional) {
       this.logger.log(
         `Bumping ${token} order size from $${notional.toFixed(2)} to $${effectiveNotional.toFixed(2)} to satisfy minimum order notional (config=$${minOrderNotional.toFixed(2)}, exchange=$${exchangeMinOrderNotional.toFixed(2)})`,
@@ -61,7 +99,7 @@ export class ExecutionService {
     }
 
     this.logger.log(
-      `Opening ${direction} ${token} | targetNotional=$${effectiveNotional.toFixed(2)} | leverage=${leverage}x | size=${sz}`,
+      `Opening ${direction} ${token} | targetNotional=$${effectiveNotional.toFixed(2)} | leverage=${leverage}x | size=${sz} | liveMid=${referencePrice.toFixed(6)} | spread=${takerEstimate.spreadBps.toFixed(1)}bps | estSlip=${takerEstimate.slippageBps.toFixed(1)}bps`,
     );
     const result = await this.hl.placeMarketOrder(token, isBuy, sz);
     if (!result) {
@@ -78,8 +116,6 @@ export class ExecutionService {
       `Exchange order result | token=${token} | status=${result.status} | avgPx=${result.avgPx ?? 0} | totalSz=${result.totalSz ?? 0}`,
     );
 
-    // Use actual fill price from the exchange response.
-    // Fall back to mid-price only if avgPx is missing (resting IOC edge case).
     const fillPrice = result.avgPx && result.avgPx > 0
       ? result.avgPx
       : await this.hl.getMidPrice(token);
@@ -89,7 +125,6 @@ export class ExecutionService {
       return null;
     }
 
-    // Use actual filled size if available (partial fills on IOC)
     const filledSz = result.totalSz && result.totalSz > 0 ? result.totalSz : sz;
     const { tp1Size, tp2Size, tp3Size } = this.buildTakeProfitSizes(filledSz);
 
@@ -118,6 +153,7 @@ export class ExecutionService {
       tp1Size,
       tp2Size,
       tp3Size,
+      stopOrderId: null,
     };
 
     this.logger.log(
@@ -135,11 +171,11 @@ export class ExecutionService {
       return null;
     }
 
-    const isBuy = position.direction === 'short'; // close long = sell; close short = buy
+    const isBuy = position.direction === 'short';
     const result = await this.hl.placeMarketOrder(position.token, isBuy, sizeToClose, true);
 
     if (!result || result.status === 'rejected') {
-      this.logger.error(`Close failed for ${position.token} — ${reason}`);
+      this.logger.error(`Close failed for ${position.token} - ${reason}`);
       return null;
     }
 
@@ -147,7 +183,7 @@ export class ExecutionService {
       ? result.avgPx
       : await this.hl.getMidPrice(position.token);
 
-    this.logger.log(`Closed ${sizeToClose} of ${position.token} @ ${exitPrice} — ${reason}`);
+    this.logger.log(`Closed ${sizeToClose} of ${position.token} @ ${exitPrice} - ${reason}`);
     return exitPrice;
   }
 
@@ -179,11 +215,13 @@ export class ExecutionService {
     return this.hl.getAccountAddress();
   }
 
+  getActionStatus(): HyperliquidActionStatus {
+    return this.hl.getActionStatus();
+  }
+
   private calculateSize(notional: number, price: number): number {
     if (price <= 0) return 0;
-    // Round down to exchange precision using szDecimals
-    const raw = notional / price;
-    return raw;
+    return notional / price;
   }
 
   private isExecutionAllowed(action: 'open' | 'close', target: string): boolean {

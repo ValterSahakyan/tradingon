@@ -29,6 +29,11 @@ export default function DashboardNav({
   showWallet,
   onDisconnect,
 }: Props) {
+  const degraded =
+    status?.actionRateLimit?.rateLimited
+    || (status?.protection?.unprotectedPositions ?? 0) > 0
+    || status?.connectivity?.connected === false
+
   return (
     <section className="portfolio-hero">
       <div className="portfolio-nav">
@@ -54,7 +59,7 @@ export default function DashboardNav({
 
         <div className="portfolio-nav-actions">
           <div className="wallet-chip">
-            {runtime ? runtime.mode.toUpperCase() : 'MODE'} | {status ? status.state.replaceAll('_', ' ') : 'loading'}
+            {runtime ? runtime.mode.toUpperCase() : 'MODE'} | {status ? status.state.replaceAll('_', ' ') : 'loading'}{degraded ? ' | DEGRADED' : ''}
           </div>
           {showWallet && (
             <div className="wallet-menu">

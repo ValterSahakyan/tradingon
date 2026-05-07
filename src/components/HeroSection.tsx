@@ -12,8 +12,8 @@ interface Props {
   lastEvent: string | null
   onVoiceToggle: () => void
   onScan: () => void
-  onPause: () => void
-  onResume: () => void
+  onStop: () => void
+  onStart: () => void
 }
 
 export default function HeroSection({
@@ -26,8 +26,8 @@ export default function HeroSection({
   lastEvent,
   onVoiceToggle,
   onScan,
-  onPause,
-  onResume,
+  onStop,
+  onStart,
 }: Props) {
   const status = dashboard?.status
   const stats = dashboard?.stats
@@ -39,6 +39,16 @@ export default function HeroSection({
   const netUnrealized = positions.reduce((sum, position) => sum + Number(position.pnlUsd ?? 0), 0)
   const latestTrade = trades[0] ?? null
   const latestSignal = signals[0] ?? null
+  const wsConnected = status?.connectivity?.connected ?? runtime?.connectivity?.connected ?? null
+  const unprotectedPositions = status?.protection?.unprotectedPositions ?? runtime?.protection?.unprotectedPositions ?? 0
+  const actionCooldownMs = status?.actionRateLimit?.cooldownMs ?? runtime?.actionRateLimit?.cooldownMs ?? 0
+  const degradedNote = actionCooldownMs > 0
+    ? `Hyperliquid action cooldown ${Math.ceil(actionCooldownMs / 1000)}s`
+    : unprotectedPositions > 0
+      ? `${unprotectedPositions} position${unprotectedPositions === 1 ? '' : 's'} missing exchange stop protection`
+      : wsConnected === false
+        ? 'WebSocket disconnected'
+        : null
 
   const pnlNum = Number(stats?.todayPnl ?? 0)
   const pnlColor = pnlNum >= 0 ? 'var(--good)' : 'var(--bad)'
@@ -71,8 +81,8 @@ export default function HeroSection({
 
         <div className="portfolio-actions">
           <button className="action-chip" disabled={busy} onClick={onScan}>Run Scan</button>
-          <button className="action-chip" disabled={busy} onClick={onResume}>Resume</button>
-          <button className="action-chip action-chip--danger" disabled={busy} onClick={onPause}>Pause 2h</button>
+          <button className="action-chip" disabled={busy} onClick={onStart}>Start Bot</button>
+          <button className="action-chip action-chip--danger" disabled={busy} onClick={onStop}>Stop Bot</button>
           <button
             className={`voice-toggle ${voiceEnabled ? 'voice-toggle--on' : ''}`}
             onClick={onVoiceToggle}
@@ -177,7 +187,9 @@ export default function HeroSection({
               ['Market', status?.marketCondition ?? '-'],
             ]}
             footer={
-              status?.pauseReason
+              degradedNote
+                ? `Attention: ${degradedNote}`
+                : status?.pauseReason
                 ? `Pause reason: ${status.pauseReason}`
                 : status?.pauseUntil
                   ? `Paused until ${formatTime(status.pauseUntil)}`
@@ -193,6 +205,7 @@ export default function HeroSection({
               ['SOL 1h', status ? formatPct(status.marketMoves.sol1h) : '-'],
               ['BTC 4h', status ? formatPct(status.marketMoves.btc4h) : '-'],
               ['Tracked', status ? String(status.trackedTokens) : '-'],
+              ['WS', wsConnected == null ? '-' : wsConnected ? 'Connected' : 'Disconnected'],
             ]}
             footer={status ? `${status.scanDiagnostics?.signalsFound ?? 0} signals in latest run` : 'Waiting for data'}
           />

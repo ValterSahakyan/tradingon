@@ -57,6 +57,14 @@ export class MarketDataService implements OnModuleInit {
     return this.currentMarketCondition;
   }
 
+  getDayVolume(token: string): number {
+    return this.tokenMeta.get(token)?.dayVolume ?? 0;
+  }
+
+  getOpenInterest(token: string): number {
+    return this.tokenMeta.get(token)?.openInterest ?? 0;
+  }
+
   getSolPriceChangePct(lookbackMs: number): number {
     return this.priceChangePct(this.solPriceHistory, lookbackMs);
   }
@@ -91,9 +99,9 @@ export class MarketDataService implements OnModuleInit {
       const meta = payload[0];
       const ctxs: any[] = Array.isArray(payload[1]) ? payload[1] : [];
       const universe: any[] = meta?.universe ?? [];
-      const minMarketCap = this.config.get<number>('filters.minMarketCap');
-      const minAgeDays = this.config.get<number>('filters.minTokenAgeDays');
       const maxTrackedTokens = this.config.get<number>('scan.maxTrackedTokens');
+      const minDayVolume = this.config.get<number>('filters.minDayVolume');
+      const minOpenInterest = this.config.get<number>('filters.minOpenInterest');
 
       const rankedTokens = universe.map((asset, index) => {
         const ctx = ctxs[index] ?? {};
@@ -117,15 +125,19 @@ export class MarketDataService implements OnModuleInit {
       const seen = new Set<string>();
       for (const asset of rankedTokens) {
         const name = asset.name;
-        if (!name || seen.has(name)) {
+        if (!name || seen.has(name) || name === 'BTC' || name === 'SOL') {
+          continue;
+        }
+        if (asset.dayVolume < minDayVolume || asset.openInterest < minOpenInterest) {
           continue;
         }
         seen.add(name);
         this.tokenMeta.set(name, {
           name,
-          marketCap: minMarketCap + 1,
-          launchTime: Date.now() - minAgeDays * 2 * 86400_000,
-          ageDays: minAgeDays * 2,
+          // Hyperliquid metadata does not provide canonical spot-style market cap or token age.
+          marketCap: 0,
+          launchTime: 0,
+          ageDays: 0,
           dayVolume: asset.dayVolume,
           openInterest: asset.openInterest,
         });
