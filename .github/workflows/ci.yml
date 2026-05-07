@@ -23,7 +23,7 @@ jobs:
           cache-dependency-path: package-lock.json
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --no-audit --no-fund
 
       - name: Typecheck
         run: npm run typecheck
@@ -32,11 +32,7 @@ jobs:
         run: npm run build:all
 
       - name: Run tests
-        run: npm test
-
-      - name: Build Docker image
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: docker build -t tradingon:test .
+        run: npm run test:ci
 
   deploy:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -90,7 +86,7 @@ jobs:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_PORT: ${{ secrets.SSH_PORT }}
           SSH_USER: ${{ secrets.SSH_USER }}
-        run: ssh -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "cd '$APP_DIR' && npm ci"
+        run: ssh -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "cd '$APP_DIR' && npm ci --no-audit --no-fund"
 
       - name: Build application on server
         env:

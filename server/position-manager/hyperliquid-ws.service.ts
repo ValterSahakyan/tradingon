@@ -129,6 +129,20 @@ export class HyperliquidWsService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
+  isHealthyForEntries(): boolean {
+    const status = this.getStatus();
+    if (!status.connected) {
+      return false;
+    }
+
+    const maxSilenceMs = this.config.get<number>('hyperliquid.maxWsSilenceSeconds') * 1000;
+    if (!status.lastMidsAt) {
+      return false;
+    }
+
+    return Date.now() - status.lastMidsAt <= maxSilenceMs;
+  }
+
   private startPing() {
     this.pingTimer = setInterval(() => {
       if (this.ws?.readyState === WebSocket.OPEN) {

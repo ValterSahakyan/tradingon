@@ -65,6 +65,7 @@ export default () => ({
     exchangeMinOrderNotional: readOptionalNumber('HYPERLIQUID_EXCHANGE_MIN_ORDER_NOTIONAL') ?? 10,
     maxEntrySpreadBps: readOptionalNumber('HYPERLIQUID_MAX_ENTRY_SPREAD_BPS') ?? 35,
     maxEntrySlippageBps: readOptionalNumber('HYPERLIQUID_MAX_ENTRY_SLIPPAGE_BPS') ?? 80,
+    maxWsSilenceSeconds: readOptionalNumber('HYPERLIQUID_MAX_WS_SILENCE_SECONDS') ?? 45,
     apiUrl: readOptionalString('HYPERLIQUID_API_URL'),
     wsUrl: readOptionalString('HYPERLIQUID_WS_URL'),
   },

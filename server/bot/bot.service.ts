@@ -116,6 +116,14 @@ export class BotService implements OnModuleInit {
     };
   }
 
+  armMainnetSession(): { armed: boolean; reason: string } {
+    return this.execution.armMainnetSession();
+  }
+
+  disarmMainnetSession(): { armed: boolean } {
+    return this.execution.disarmMainnetSession();
+  }
+
   getRuntimeStatus() {
     const actionStatus = this.hlClient.getActionStatus();
     return {
@@ -126,6 +134,7 @@ export class BotService implements OnModuleInit {
       liveTradingEnabled: this.config.get<boolean>('execution.enabled'),
       initialized: this.initialized,
       mode: this.config.get<boolean>('hyperliquid.testnet') ? 'testnet' : 'mainnet',
+      mainnetSessionArmed: this.execution.isMainnetSessionArmed(),
       signalDiagnostics: this.signal.getLastDiagnostics(),
       connectivity: this.ws.getStatus(),
       actionRateLimit: actionStatus,
@@ -178,6 +187,14 @@ export class BotService implements OnModuleInit {
     const { allowed, reason } = await this.risk.canTrade();
     if (!allowed) {
       this.logger.log(`Trading paused - ${reason} | state: ${this.risk.getState()}`);
+      return;
+    }
+
+    if (!this.ws.isHealthyForEntries()) {
+      const wsStatus = this.ws.getStatus();
+      this.logger.warn(
+        `Skipping fresh entries: Hyperliquid websocket is not healthy | connected=${wsStatus.connected} | lastMidsAt=${wsStatus.lastMidsAt ?? 'never'}`,
+      );
       return;
     }
 

@@ -1,4 +1,4 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, ServiceUnavailableException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { AppConfigService } from '../config/app-config.service';
 
@@ -13,7 +13,7 @@ export class HealthController {
   getHealth() {
     const configError = this.config.getInitError();
     const configReady = this.config.isReady() && !configError;
-    return {
+    const payload = {
       status: this.dataSource.isInitialized && configReady ? 'ok' : 'degraded',
       timestamp: Date.now(),
       services: {
@@ -22,5 +22,11 @@ export class HealthController {
       },
       configError,
     };
+
+    if (!this.dataSource.isInitialized || !configReady) {
+      throw new ServiceUnavailableException(payload);
+    }
+
+    return payload;
   }
 }

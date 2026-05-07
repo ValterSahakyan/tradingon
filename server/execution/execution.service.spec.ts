@@ -57,6 +57,7 @@ describe('ExecutionService', () => {
     };
 
     service = new ExecutionService(config as unknown as AppConfigService, hl as any);
+    service.armMainnetSession();
   });
 
   it('refuses to open positions when execution is disabled', async () => {
@@ -272,6 +273,56 @@ describe('ExecutionService', () => {
     expect(hl.placeMarketOrder).not.toHaveBeenCalled();
   });
 
+  it('refuses to open positions on mainnet until the operator arms the session', async () => {
+    service.disarmMainnetSession();
+
+    const result = await service.openPosition({
+      token: 'SOL',
+      direction: 'long',
+      score: 2,
+      patternsFired: ['volume_spike'],
+      currentPrice: 10,
+      suggestedMargin: 10,
+      notional: 30,
+      leverage: 3,
+      stopPrice: 9.3,
+      tp1Price: 10.7,
+      tp2Price: 11.4,
+      marketCondition: 'sideways',
+    });
+
+    expect(result).toBeNull();
+    expect(hl.setLeverage).not.toHaveBeenCalled();
+    expect(hl.placeMarketOrder).not.toHaveBeenCalled();
+
+    service.armMainnetSession();
+
+    hl.placeMarketOrder.mockResolvedValue({
+      status: 'filled',
+      avgPx: 10,
+      totalSz: 3,
+    });
+
+    const armedResult = await service.openPosition({
+      token: 'SOL',
+      direction: 'long',
+      score: 2,
+      patternsFired: ['volume_spike'],
+      currentPrice: 10,
+      suggestedMargin: 10,
+      notional: 30,
+      leverage: 3,
+      stopPrice: 9.3,
+      tp1Price: 10.7,
+      tp2Price: 11.4,
+      marketCondition: 'sideways',
+    });
+
+    expect(armedResult).not.toBeNull();
+    expect(hl.setLeverage).toHaveBeenCalledWith('SOL', 3);
+    expect(hl.placeMarketOrder).toHaveBeenCalled();
+  });
+
   it('refuses to close positions when execution is disabled', async () => {
     config.get.mockImplementation((key: string) => {
       if (key === 'execution.enabled') return false;
@@ -295,6 +346,7 @@ describe('ExecutionService', () => {
         notional: 30,
         leverage: 3,
         size: 3,
+        initialSize: 3,
         unrealizedPnl: 0,
         realizedPnl: 0,
         tp1Hit: false,
@@ -310,6 +362,9 @@ describe('ExecutionService', () => {
         tp1Size: 1.5,
         tp2Size: 1.05,
         tp3Size: 0.45,
+        stopOrderId: null,
+        tp1OrderId: null,
+        tp2OrderId: null,
       },
       1,
       'TP1',
@@ -350,6 +405,7 @@ describe('ExecutionService', () => {
         notional: 30,
         leverage: 3,
         size: 3,
+        initialSize: 3,
         unrealizedPnl: 0,
         realizedPnl: 0,
         tp1Hit: false,
@@ -365,6 +421,9 @@ describe('ExecutionService', () => {
         tp1Size: 1.5,
         tp2Size: 1.05,
         tp3Size: 0.45,
+        stopOrderId: null,
+        tp1OrderId: null,
+        tp2OrderId: null,
       },
       1,
       'TP1',

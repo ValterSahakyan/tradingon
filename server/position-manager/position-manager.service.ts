@@ -69,9 +69,9 @@ export class PositionManagerService implements OnModuleInit {
       return false;
     }
 
-    const protectedOnExchange = await this.armExchangeStop(position);
+    const protectedOnExchange = await this.armExchangeExitSuite(position);
     if (!protectedOnExchange) {
-      this.logger.error(`Exchange stop could not be armed for ${position.token}; closing position immediately`);
+      this.logger.error(`Exchange exits could not be armed for ${position.token}; closing position immediately`);
       await this.execution.closeFullPosition(position, 'emergency');
       return false;
     }
@@ -91,8 +91,8 @@ export class PositionManagerService implements OnModuleInit {
   getProtectionStatus(): { protectedPositions: number; unprotectedPositions: number } {
     const positions = [...this.positions.values()];
     return {
-      protectedPositions: positions.filter((position) => position.stopOrderId != null).length,
-      unprotectedPositions: positions.filter((position) => position.stopOrderId == null).length,
+      protectedPositions: positions.filter((position) => this.isPositionProtected(position)).length,
+      unprotectedPositions: positions.filter((position) => !this.isPositionProtected(position)).length,
     };
   }
 
@@ -152,47 +152,6 @@ export class PositionManagerService implements OnModuleInit {
     if (Date.now() - position.openTime >= maxHoldMs) {
       await this.closeAndLog(position, 'time_stop');
       return;
-    }
-
-    if (!position.tp1Hit) {
-      const tp1Hit = position.direction === 'long'
-        ? currentPrice >= position.tp1Price
-        : currentPrice <= position.tp1Price;
-
-      if (tp1Hit) {
-        const closeSize = Math.min(position.tp1Size, position.size);
-        const exitPx = await this.runCloseAttempt(
-          position,
-          () => this.execution.closePosition(position, closeSize, 'TP1'),
-        );
-        if (exitPx !== null) {
-          this.applyPartialClose(position, closeSize, exitPx);
-          position.tp1Hit = true;
-          position.stopPrice = position.entryPrice;
-          await this.refreshExchangeStop(position);
-          this.logger.log(`TP1 hit ${position.token} - stop moved to breakeven`);
-        }
-      }
-    }
-
-    if (position.tp1Hit && !position.tp2Hit) {
-      const tp2Hit = position.direction === 'long'
-        ? currentPrice >= position.tp2Price
-        : currentPrice <= position.tp2Price;
-
-      if (tp2Hit) {
-        const closeSize = Math.min(position.tp2Size, position.size);
-        const exitPx = await this.runCloseAttempt(
-          position,
-          () => this.execution.closePosition(position, closeSize, 'TP2'),
-        );
-        if (exitPx !== null) {
-          this.applyPartialClose(position, closeSize, exitPx);
-          position.tp2Hit = true;
-          await this.refreshExchangeStop(position);
-          this.logger.log(`TP2 hit ${position.token}`);
-        }
-      }
     }
 
     if (position.tp1Hit && position.tp2Hit && position.size > 0) {
@@ -285,37 +244,39 @@ export class PositionManagerService implements OnModuleInit {
     }
   }
 
-  private async armExchangeStop(position: OpenPosition): Promise<boolean> {
+  private async armExchangeExitSuite(position: OpenPosition): Promise<boolean> {
     await this.hlClient.cancelCoinTriggerOrders(position.token);
-    const isBuy = position.direction === 'short';
-    const result = await this.hlClient.placeTriggerMarketOrder(
-      position.token,
-      isBuy,
-      position.size,
-      position.stopPrice,
-      'sl',
-      true,
-    );
+    position.stopOrderId = null;
+    position.tp1OrderId = null;
+    position.tp2OrderId = null;
 
-    if (!result || (result.status !== 'resting' && result.status !== 'filled')) {
+    if (position.size <= 0) {
+      return true;
+    }
+
+    const stopArmed = await this.placeExchangeTrigger(position, position.size, position.stopPrice, 'sl');
+    if (!stopArmed) {
       return false;
     }
+    position.stopOrderId = stopArmed;
 
-    position.stopOrderId = result.oid ?? null;
+    if (!position.tp1Hit) {
+      const tp1OrderId = await this.placeExchangeTrigger(position, position.tp1Size, position.tp1Price, 'tp');
+      if (!tp1OrderId) {
+        return false;
+      }
+      position.tp1OrderId = tp1OrderId;
+    }
+
+    if (!position.tp2Hit) {
+      const tp2OrderId = await this.placeExchangeTrigger(position, position.tp2Size, position.tp2Price, 'tp');
+      if (!tp2OrderId) {
+        return false;
+      }
+      position.tp2OrderId = tp2OrderId;
+    }
+
     return true;
-  }
-
-  private async refreshExchangeStop(position: OpenPosition): Promise<void> {
-    if (position.size <= 0) {
-      await this.hlClient.cancelCoinTriggerOrders(position.token);
-      position.stopOrderId = null;
-      return;
-    }
-
-    const armed = await this.armExchangeStop(position);
-    if (!armed) {
-      this.logger.warn(`Failed to refresh exchange stop for ${position.token}`);
-    }
   }
 
   private async syncPositionsFromExchange(): Promise<void> {
@@ -352,10 +313,16 @@ export class PositionManagerService implements OnModuleInit {
         const direction = sz > 0 ? 'long' : 'short';
         const absSz = Math.abs(sz);
         const notional = Math.abs(parseFloat(p.positionValue ?? '0'));
-        const tp1Size = absSz * tp1Ratio;
-        const tp2Size = absSz * tp2Ratio;
-        const tp3Size = Math.max(0, absSz - tp1Size - tp2Size);
         const existing = this.positions.get(p.coin);
+        const initialSize = Math.max(absSz, existing?.initialSize ?? absSz);
+        const tp1Size = initialSize * tp1Ratio;
+        const tp2Size = initialSize * tp2Ratio;
+        const tp3Size = Math.max(0, initialSize - tp1Size - tp2Size);
+        const tpState = this.deriveTakeProfitState(absSz, initialSize, tp1Ratio, tp2Ratio);
+        const trailingHighest =
+          direction === 'long'
+            ? Math.max(existing?.trailingHighest ?? entryPx, entryPx)
+            : Math.min(existing?.trailingHighest ?? entryPx, entryPx);
 
         this.positions.set(p.coin, {
           id: existing?.id ?? `${p.coin}-restored-${Date.now()}`,
@@ -367,20 +334,23 @@ export class PositionManagerService implements OnModuleInit {
           notional,
           leverage: p.leverage?.value ?? this.config.get<number>('capital.leverage'),
           size: absSz,
+          initialSize,
           unrealizedPnl: parseFloat(p.unrealizedPnl ?? '0'),
           realizedPnl: existing?.realizedPnl ?? 0,
-          tp1Hit: existing?.tp1Hit ?? false,
-          tp2Hit: existing?.tp2Hit ?? false,
-          stopPrice: direction === 'long'
-            ? entryPx * (1 - stopPct)
-            : entryPx * (1 + stopPct),
+          tp1Hit: tpState.tp1Hit,
+          tp2Hit: tpState.tp2Hit,
+          stopPrice: tpState.tp1Hit
+            ? entryPx
+            : direction === 'long'
+              ? entryPx * (1 - stopPct)
+              : entryPx * (1 + stopPct),
           tp1Price: direction === 'long'
             ? entryPx * (1 + this.config.get<number>('exits.tp1Percent') / 100)
             : entryPx * (1 - this.config.get<number>('exits.tp1Percent') / 100),
           tp2Price: direction === 'long'
             ? entryPx * (1 + this.config.get<number>('exits.tp2Percent') / 100)
             : entryPx * (1 - this.config.get<number>('exits.tp2Percent') / 100),
-          trailingHighest: existing?.trailingHighest ?? entryPx,
+          trailingHighest,
           openTime: existing?.openTime ?? Date.now(),
           patternsFired: existing?.patternsFired ?? [],
           score: existing?.score ?? 0,
@@ -389,6 +359,8 @@ export class PositionManagerService implements OnModuleInit {
           tp2Size,
           tp3Size,
           stopOrderId: existing?.stopOrderId ?? null,
+          tp1OrderId: existing?.tp1OrderId ?? null,
+          tp2OrderId: existing?.tp2OrderId ?? null,
         });
       }
 
@@ -400,53 +372,120 @@ export class PositionManagerService implements OnModuleInit {
 
   private async reconcileExchangeProtection(): Promise<void> {
     const openOrders = await this.hlClient.getFrontendOpenOrders();
-    const stopOrdersByCoin = new Map<string, number>();
-
-    for (const order of openOrders) {
-      if (
-        typeof order?.coin === 'string'
-        && order.isTrigger === true
-        && order.triggerCondition === 'sl'
-        && typeof order?.oid === 'number'
-      ) {
-        stopOrdersByCoin.set(order.coin, Number(order.oid));
-      }
-    }
 
     for (const position of this.positions.values()) {
-      const existingOrderId = stopOrdersByCoin.get(position.token);
-      if (existingOrderId != null) {
-        position.stopOrderId = existingOrderId;
+      this.syncTriggerOrderIds(position, openOrders.filter((order) => order?.coin === position.token));
+      if (this.isPositionProtected(position)) {
         continue;
       }
 
-      this.logger.warn(`No exchange stop found for restored ${position.token}; re-arming protection`);
-      const armed = await this.armExchangeStop(position);
+      this.logger.warn(`Exchange exit suite incomplete for ${position.token}; re-arming protection`);
+      const armed = await this.armExchangeExitSuite(position);
       if (!armed) {
         position.stopOrderId = null;
-        this.logger.error(`Failed to re-arm exchange stop for restored ${position.token}`);
+        position.tp1OrderId = null;
+        position.tp2OrderId = null;
+        this.logger.error(`Failed to re-arm exchange exits for restored ${position.token}`);
       }
     }
   }
 
-  private applyPartialClose(position: OpenPosition, closeSize: number, exitPrice: number): void {
-    if (closeSize <= 0 || position.size <= 0) {
-      return;
+  private isPositionProtected(position: OpenPosition): boolean {
+    if (position.stopOrderId == null) {
+      return false;
+    }
+    if (!position.tp1Hit && position.tp1OrderId == null) {
+      return false;
+    }
+    if (!position.tp2Hit && position.tp2OrderId == null) {
+      return false;
+    }
+    return true;
+  }
+
+  private deriveTakeProfitState(
+    currentSize: number,
+    initialSize: number,
+    tp1Ratio: number,
+    tp2Ratio: number,
+  ): { tp1Hit: boolean; tp2Hit: boolean } {
+    if (initialSize <= 0 || currentSize <= 0) {
+      return { tp1Hit: false, tp2Hit: false };
     }
 
-    const portion = Math.min(1, closeSize / position.size);
-    const closingNotional = position.notional * portion;
-    const closingMargin = position.margin * portion;
-    const priceDiff =
-      position.direction === 'long'
-        ? exitPrice - position.entryPrice
-        : position.entryPrice - exitPrice;
+    const remainingRatio = currentSize / initialSize;
+    const tp1RemainingRatio = Math.max(0, 1 - tp1Ratio);
+    const tp2RemainingRatio = Math.max(0, 1 - tp1Ratio - tp2Ratio);
+    const epsilon = 0.0001;
 
-    position.realizedPnl += (priceDiff / position.entryPrice) * closingNotional;
-    position.size = Math.max(0, position.size - closeSize);
-    position.notional = Math.max(0, position.notional - closingNotional);
-    position.margin = Math.max(0, position.margin - closingMargin);
-    position.tp3Size = position.size;
-    position.unrealizedPnl = 0;
+    if (remainingRatio <= tp2RemainingRatio + epsilon) {
+      return { tp1Hit: true, tp2Hit: true };
+    }
+
+    if (remainingRatio <= tp1RemainingRatio + epsilon) {
+      return { tp1Hit: true, tp2Hit: false };
+    }
+
+    return { tp1Hit: false, tp2Hit: false };
+  }
+
+  private async placeExchangeTrigger(
+    position: OpenPosition,
+    size: number,
+    triggerPrice: number,
+    type: 'tp' | 'sl',
+  ): Promise<number | null> {
+    if (size <= 0 || triggerPrice <= 0) {
+      return null;
+    }
+
+    const isBuy = position.direction === 'short';
+    const result = await this.hlClient.placeTriggerMarketOrder(
+      position.token,
+      isBuy,
+      Math.min(size, position.size),
+      triggerPrice,
+      type,
+      true,
+    );
+
+    if (!result || (result.status !== 'resting' && result.status !== 'filled')) {
+      return null;
+    }
+
+    return result.oid ?? null;
+  }
+
+  private syncTriggerOrderIds(position: OpenPosition, orders: any[]): void {
+    position.stopOrderId = null;
+    position.tp1OrderId = null;
+    position.tp2OrderId = null;
+
+    const stopOrder = orders.find((order) =>
+      order?.isTrigger === true
+      && order?.triggerCondition === 'sl'
+      && typeof order?.oid === 'number',
+    );
+    if (stopOrder) {
+      position.stopOrderId = Number(stopOrder.oid);
+    }
+
+    const tpOrders = orders
+      .filter((order) =>
+        order?.isTrigger === true
+        && order?.triggerCondition === 'tp'
+        && typeof order?.oid === 'number',
+      )
+      .sort((left, right) => Number(left?.triggerPx ?? left?.triggerPxRaw ?? 0) - Number(right?.triggerPx ?? right?.triggerPxRaw ?? 0));
+
+    if (!position.tp1Hit && tpOrders[0]) {
+      position.tp1OrderId = Number(tpOrders[0].oid);
+    }
+
+    if (!position.tp2Hit && position.tp1Hit && tpOrders[0]) {
+      position.tp2OrderId = Number(tpOrders[0].oid);
+    } else if (!position.tp2Hit && !position.tp1Hit && tpOrders[1]) {
+      position.tp2OrderId = Number(tpOrders[1].oid);
+    }
   }
 }

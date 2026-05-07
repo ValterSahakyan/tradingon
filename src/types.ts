@@ -126,6 +126,7 @@ export interface RuntimeInfo {
   isRunning: boolean
   initialized: boolean
   liveTradingEnabled: boolean
+  mainnetSessionArmed: boolean
   scanIntervalSeconds: number
   connectivity?: {
     connected: boolean

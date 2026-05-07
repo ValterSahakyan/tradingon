@@ -28,17 +28,17 @@ async function bootstrap() {
 
   app.enableShutdownHooks();
   const configService = app.get(ConfigService);
-  const port = configService.get<number>('server.port') || 3000;
-  logger.log(`Starting HTTP listener on port ${port}`);
-  await app.listen(port, '0.0.0.0');
-  logger.log(`HTTP listener bound on port ${port}`);
-
   const appConfig = app.get(AppConfigService);
   await appConfig.waitUntilReady();
   const readinessIssues = appConfig.getLiveTradingReadiness();
   if (readinessIssues.length > 0) {
     throw new Error(`Live trading safety check failed: ${readinessIssues.join('; ')}`);
   }
+
+  const port = configService.get<number>('server.port') || 3000;
+  logger.log(`Starting HTTP listener on port ${port}`);
+  await app.listen(port, '0.0.0.0');
+  logger.log(`HTTP listener bound on port ${port}`);
 
   logger.log(`Trading bot running on port ${port}`);
   logger.log(`Mode: ${appConfig.get<boolean>('hyperliquid.testnet') ? 'TESTNET' : 'MAINNET'}`);

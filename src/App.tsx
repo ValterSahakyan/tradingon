@@ -397,6 +397,8 @@ export default function App() {
           onScan={() => handleBotAction('/api/bot/scan', 'Manual scan requested.', {})}
           onStop={() => handleBotAction('/api/bot/stop', 'Bot stopped. Position management is frozen until you start it again.', {})}
           onStart={() => handleBotAction('/api/bot/start', 'Bot started.', {})}
+          onArmMainnet={() => handleBotAction('/api/bot/arm-mainnet', 'Mainnet execution armed for this session.', {})}
+          onDisarmMainnet={() => handleBotAction('/api/bot/disarm-mainnet', 'Mainnet execution disarmed for this session.', {})}
         />
       )}
 

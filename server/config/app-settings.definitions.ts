@@ -185,6 +185,16 @@ export const APP_SETTING_FIELDS: SettingField[] = [
     help: 'Skip new entries when top-of-book depth implies more taker slippage than this many basis points for the intended size.',
   }),
   field({
+    key: 'hyperliquidMaxWsSilenceSeconds',
+    env: null,
+    path: 'hyperliquid.maxWsSilenceSeconds',
+    type: 'number',
+    label: 'Max WS Silence Seconds',
+    section: 'Exchange',
+    editable: true,
+    help: 'Refuse fresh entries when Hyperliquid websocket mids have been silent longer than this threshold.',
+  }),
+  field({
     key: 'hyperliquidApiUrl',
     env: 'HYPERLIQUID_API_URL',
     path: 'hyperliquid.apiUrl',

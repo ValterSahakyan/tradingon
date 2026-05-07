@@ -33,6 +33,7 @@ export default function DashboardNav({
     status?.actionRateLimit?.rateLimited
     || (status?.protection?.unprotectedPositions ?? 0) > 0
     || status?.connectivity?.connected === false
+    || (runtime?.mode === 'mainnet' && runtime?.liveTradingEnabled && !runtime?.mainnetSessionArmed)
 
   return (
     <section className="portfolio-hero">

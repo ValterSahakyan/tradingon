@@ -57,6 +57,24 @@ export class BotController {
     };
   }
 
+  @Post('arm-mainnet')
+  armMainnet() {
+    return {
+      ok: true,
+      execution: this.bot.armMainnetSession(),
+      state: this.risk.getSnapshot(),
+    };
+  }
+
+  @Post('disarm-mainnet')
+  disarmMainnet() {
+    return {
+      ok: true,
+      execution: this.bot.disarmMainnetSession(),
+      state: this.risk.getSnapshot(),
+    };
+  }
+
   @Post('close-position')
   async closePosition(@Body() body: { token: string }) {
     return this.bot.closePosition(body.token);

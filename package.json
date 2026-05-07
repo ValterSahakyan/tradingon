@@ -1,6 +1,6 @@
 {
   "name": "tradingon",
-  "version": "1.0.59",
+  "version": "1.0.63",
   "description": "Hyperliquid perpetual futures trading bot for Solana meme tokens",
   "private": true,
   "license": "MIT",
@@ -23,6 +23,7 @@
     "start:prod": "node server/dist/main.js",
     "config:seed": "ts-node -r tsconfig-paths/register server/config/seed-app-settings.ts",
     "test": "jest --runInBand",
+    "test:ci": "node scripts/jest-ci.js",
     "typeorm": "node -r ts-node/register -r tsconfig-paths/register ./node_modules/typeorm/cli.js",
     "migration:run": "npm run typeorm -- migration:run -d server/config/data-source.ts"
   },

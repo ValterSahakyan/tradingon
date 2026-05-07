@@ -14,6 +14,8 @@ interface Props {
   onScan: () => void
   onStop: () => void
   onStart: () => void
+  onArmMainnet: () => void
+  onDisarmMainnet: () => void
 }
 
 export default function HeroSection({
@@ -28,6 +30,8 @@ export default function HeroSection({
   onScan,
   onStop,
   onStart,
+  onArmMainnet,
+  onDisarmMainnet,
 }: Props) {
   const status = dashboard?.status
   const stats = dashboard?.stats
@@ -44,6 +48,8 @@ export default function HeroSection({
   const actionCooldownMs = status?.actionRateLimit?.cooldownMs ?? runtime?.actionRateLimit?.cooldownMs ?? 0
   const degradedNote = actionCooldownMs > 0
     ? `Hyperliquid action cooldown ${Math.ceil(actionCooldownMs / 1000)}s`
+    : runtime?.mode === 'mainnet' && runtime?.liveTradingEnabled && !runtime?.mainnetSessionArmed
+      ? 'Mainnet session is not armed for fresh entries'
     : unprotectedPositions > 0
       ? `${unprotectedPositions} position${unprotectedPositions === 1 ? '' : 's'} missing exchange stop protection`
       : wsConnected === false
@@ -83,6 +89,13 @@ export default function HeroSection({
           <button className="action-chip" disabled={busy} onClick={onScan}>Run Scan</button>
           <button className="action-chip" disabled={busy} onClick={onStart}>Start Bot</button>
           <button className="action-chip action-chip--danger" disabled={busy} onClick={onStop}>Stop Bot</button>
+          {runtime?.mode === 'mainnet' && runtime?.liveTradingEnabled ? (
+            runtime.mainnetSessionArmed ? (
+              <button className="action-chip action-chip--danger" disabled={busy} onClick={onDisarmMainnet}>Disarm Mainnet</button>
+            ) : (
+              <button className="action-chip" disabled={busy} onClick={onArmMainnet}>Arm Mainnet</button>
+            )
+          ) : null}
           <button
             className={`voice-toggle ${voiceEnabled ? 'voice-toggle--on' : ''}`}
             onClick={onVoiceToggle}

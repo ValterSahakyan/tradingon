@@ -152,6 +152,7 @@ export class AppConfigService implements OnModuleInit {
     requiredPositive('capital.marginScore4', 'Margin For Score 4');
     requiredPositive('hyperliquid.maxEntrySpreadBps', 'Max Entry Spread Bps');
     requiredPositive('hyperliquid.maxEntrySlippageBps', 'Max Entry Slippage Bps');
+    requiredPositive('hyperliquid.maxWsSilenceSeconds', 'Max WS Silence Seconds');
     requiredPositive('filters.minDayVolume', 'Min Day Volume');
     requiredPositive('filters.minOpenInterest', 'Min Open Interest');
     requiredPositive('exits.stopLossPercent', 'Stop Loss %');
@@ -336,10 +337,14 @@ export class AppConfigService implements OnModuleInit {
       return;
     }
 
-    if (key === 'hyperliquidMaxEntrySpreadBps' || key === 'hyperliquidMaxEntrySlippageBps') {
+    if (
+      key === 'hyperliquidMaxEntrySpreadBps'
+      || key === 'hyperliquidMaxEntrySlippageBps'
+      || key === 'hyperliquidMaxWsSilenceSeconds'
+    ) {
       const numeric = Number(value);
       if (!Number.isFinite(numeric) || numeric <= 0 || numeric > 500) {
-        throw new BadRequestException('Hyperliquid entry spread/slippage thresholds must be greater than 0 and less than or equal to 500 bps');
+        throw new BadRequestException('Hyperliquid spread/slippage/ws thresholds must be greater than 0 and less than or equal to 500');
       }
       return;
     }

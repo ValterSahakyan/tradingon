@@ -7,6 +7,7 @@ import { HyperliquidActionStatus } from './hyperliquid.client';
 @Injectable()
 export class ExecutionService {
   private readonly logger = new Logger(ExecutionService.name);
+  private mainnetSessionArmed = false;
 
   constructor(
     private readonly config: AppConfigService,
@@ -138,6 +139,7 @@ export class ExecutionService {
       notional: filledSz * fillPrice,
       leverage,
       size: filledSz,
+      initialSize: filledSz,
       unrealizedPnl: 0,
       realizedPnl: 0,
       tp1Hit: false,
@@ -154,6 +156,8 @@ export class ExecutionService {
       tp2Size,
       tp3Size,
       stopOrderId: null,
+      tp1OrderId: null,
+      tp2OrderId: null,
     };
 
     this.logger.log(
@@ -219,6 +223,36 @@ export class ExecutionService {
     return this.hl.getActionStatus();
   }
 
+  armMainnetSession(): { armed: boolean; reason: string } {
+    const isTestnet = this.config.get<boolean>('hyperliquid.testnet');
+    if (isTestnet) {
+      this.mainnetSessionArmed = true;
+      return { armed: true, reason: 'testnet_mode' };
+    }
+
+    if (!this.config.get<boolean>('execution.enabled')) {
+      return { armed: false, reason: 'live_trading_disabled' };
+    }
+
+    if (!this.config.get<boolean>('execution.allowMainnet')) {
+      return { armed: false, reason: 'allow_mainnet_disabled' };
+    }
+
+    this.mainnetSessionArmed = true;
+    this.logger.warn('Mainnet execution session armed by operator');
+    return { armed: true, reason: 'armed' };
+  }
+
+  disarmMainnetSession(): { armed: boolean } {
+    this.mainnetSessionArmed = false;
+    this.logger.warn('Mainnet execution session disarmed by operator');
+    return { armed: false };
+  }
+
+  isMainnetSessionArmed(): boolean {
+    return this.config.get<boolean>('hyperliquid.testnet') ? true : this.mainnetSessionArmed;
+  }
+
   private calculateSize(notional: number, price: number): number {
     if (price <= 0) return 0;
     return notional / price;
@@ -234,6 +268,11 @@ export class ExecutionService {
     const allowMainnet = this.config.get<boolean>('execution.allowMainnet');
     if (!isTestnet && !allowMainnet) {
       this.logger.error(`Mainnet execution blocked - ALLOW_MAINNET_TRADING is off; refusing to ${action} ${target}`);
+      return false;
+    }
+
+    if (action === 'open' && !isTestnet && !this.mainnetSessionArmed) {
+      this.logger.error(`Mainnet execution blocked - operator session is not armed; refusing to ${action} ${target}`);
       return false;
     }
 

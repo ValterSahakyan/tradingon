@@ -97,6 +97,7 @@ export interface OpenPosition {
   notional: number;
   leverage: number;
   size: number; // contracts/coins
+  initialSize: number;
   unrealizedPnl: number;
   realizedPnl: number;
   tp1Hit: boolean;
@@ -113,6 +114,8 @@ export interface OpenPosition {
   tp2Size: number;
   tp3Size: number;
   stopOrderId?: number | null;
+  tp1OrderId?: number | null;
+  tp2OrderId?: number | null;
 }
 
 export interface HyperliquidOrderRequest {
