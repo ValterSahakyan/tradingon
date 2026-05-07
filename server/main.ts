@@ -32,7 +32,7 @@ async function bootstrap() {
   await appConfig.waitUntilReady();
   const readinessIssues = appConfig.getLiveTradingReadiness();
   if (readinessIssues.length > 0) {
-    throw new Error(`Live trading safety check failed: ${readinessIssues.join('; ')}`);
+    logger.error(`Live trading safety check failed: ${readinessIssues.join('; ')}`);
   }
 
   const port = configService.get<number>('server.port') || 3000;

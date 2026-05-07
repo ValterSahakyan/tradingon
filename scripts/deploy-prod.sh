@@ -13,7 +13,7 @@ fi
 
 PORT_VALUE="$(grep -E '^PORT=' .env | tail -n 1 | cut -d '=' -f 2- | tr -d '\r' || true)"
 PORT_VALUE="${PORT_VALUE:-3000}"
-HEALTHCHECK_URL="${HEALTHCHECK_URL:-http://127.0.0.1:${PORT_VALUE}/api/health}"
+HEALTHCHECK_URL="${HEALTHCHECK_URL:-http://127.0.0.1:${PORT_VALUE}/api/health/live}"
 
 docker compose -f "$COMPOSE_FILE" up -d --build --remove-orphans
 

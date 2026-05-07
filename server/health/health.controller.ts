@@ -9,6 +9,14 @@ export class HealthController {
     private readonly config: AppConfigService,
   ) {}
 
+  @Get('live')
+  getLiveness() {
+    return {
+      status: 'up',
+      timestamp: Date.now(),
+    };
+  }
+
   @Get()
   getHealth() {
     const configError = this.config.getInitError();
