@@ -1,6 +1,6 @@
 {
   "name": "tradingon",
-  "version": "1.0.64",
+  "version": "1.0.65",
   "description": "Hyperliquid perpetual futures trading bot for Solana meme tokens",
   "private": true,
   "license": "MIT",
